@@ -60,4 +60,12 @@ describe('tabs', () => {
     expect(focusToTab({ view: 'proposal', repo: 'r', params: { id: 'p1' } })!.kind).toBe('proposal');
     expect(focusToTab({ view: 'bogus', repo: 'r' })).toBeNull();
   });
+
+  it('keeps an earlier agent message when the same file is focused again', () => {
+    let s: TabState = { tabs: [] };
+    s = openTab(s, focusToTab({ view: 'code', repo: 'r', message: 'look here', params: { file: 'a.go', line: 3 } })!);
+    s = openTab(s, focusToTab({ view: 'code', repo: 'r', params: { file: 'a.go', summary: true } })!);
+    expect(s.tabs).toHaveLength(1);
+    expect(s.tabs[0].params).toMatchObject({ message: 'look here', summary: true, line: 3 });
+  });
 });
