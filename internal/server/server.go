@@ -1,0 +1,227 @@
+// Package server hosts CodeDiver's local HTTP endpoint: the MCP streamable
+// transport for agents and, in browser mode, the UI, its JSON API and an
+// event stream. It only ever binds to loopback.
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"io/fs"
+	"log/slog"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/aitakemyjob/codediver/internal/api"
+	"github.com/aitakemyjob/codediver/internal/core"
+	"github.com/aitakemyjob/codediver/internal/mcpserver"
+)
+
+// HeaderName must accompany API calls. Browsers cannot attach custom headers
+// cross-origin without a CORS preflight, which this server never approves,
+// so the header doubles as CSRF protection.
+const HeaderName = "X-CodeDiver"
+
+type Options struct {
+	Port int
+	// UI, when set, serves the frontend and the /api endpoints (browser mode).
+	UI fs.FS
+}
+
+type Server struct {
+	core *core.Service
+	api  *api.API
+	mcp  *mcpserver.Server
+	opts Options
+	http *http.Server
+	ln   net.Listener
+}
+
+// New creates the HTTP server; the MCP endpoint is always served and the
+// UI/API only when opts.UI is set.
+func New(c *core.Service, a *api.API, opts Options) *Server {
+	return &Server{core: c, api: a, mcp: mcpserver.New(c), opts: opts}
+}
+
+// Handler returns the routed, loopback-only HTTP handler.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/mcp", s.mcp.Handler())
+	mux.Handle("/mcp/", s.mcp.Handler())
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok", "app": "codediver", "version": s.core.Version})
+	})
+	if s.opts.UI != nil {
+		mux.HandleFunc("/api/invoke", s.guard(s.invoke))
+		mux.HandleFunc("/api/events", s.guard(s.events))
+		mux.Handle("/", spa(s.opts.UI))
+	}
+	return localOnly(mux)
+}
+
+// localOnly rejects requests whose Host isn't loopback (DNS rebinding).
+func localOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil {
+			host = h
+		}
+		switch strings.Trim(host, "[]") {
+		case "127.0.0.1", "localhost", "::1":
+			next.ServeHTTP(w, r)
+		default:
+			http.Error(w, "forbidden host", http.StatusForbidden)
+		}
+	})
+}
+
+// guard enforces same-origin API access.
+func (s *Server) guard(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); origin != "" && !sameHost(origin, r.Host) {
+			http.Error(w, "cross-origin request refused", http.StatusForbidden)
+			return
+		}
+		// EventSource can't set headers; it is read-only, so allow a query flag.
+		if r.Header.Get(HeaderName) == "" && r.URL.Query().Get("gd") != "1" {
+			http.Error(w, "missing "+HeaderName+" header", http.StatusForbidden)
+			return
+		}
+		h(w, r)
+	}
+}
+
+// sameHost reports whether an Origin header names the requested host.
+func sameHost(origin, host string) bool {
+	o := strings.TrimPrefix(strings.TrimPrefix(origin, "http://"), "https://")
+	return o == host
+}
+
+type invokeReq struct {
+	Method string          `json:"method"`
+	Args   json.RawMessage `json:"args"`
+}
+
+// invoke handles POST /api/invoke: {method, args} → {result} or {error}.
+func (s *Server) invoke(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req invokeReq
+	if err := json.NewDecoder(io.LimitReader(r.Body, 32<<20)).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	out, err := s.api.Invoke(r.Context(), req.Method, req.Args)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]string{"error": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	fmt.Fprintf(w, `{"result":%s}`, out)
+}
+
+// writeJSON writes v as a JSON response with the given status code.
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	json.NewEncoder(w).Encode(v)
+}
+
+// events streams bus events to the browser as Server-Sent Events, with
+// periodic keepalive comments.
+func (s *Server) events(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	ch, cancel := s.core.Bus.Subscribe()
+	defer cancel()
+	fmt.Fprint(w, ": connected\n\n")
+	flusher.Flush()
+	tick := time.NewTicker(20 * time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-tick.C:
+			fmt.Fprint(w, ": ping\n\n")
+			flusher.Flush()
+		case ev, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(ev)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
+}
+
+// spa serves static files, falling back to index.html for client routes.
+func spa(ui fs.FS) http.Handler {
+	files := http.FileServer(http.FS(ui))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		p := strings.TrimPrefix(r.URL.Path, "/")
+		if p == "" {
+			p = "index.html"
+		}
+		if _, err := fs.Stat(ui, p); err != nil {
+			r = r.Clone(r.Context())
+			r.URL.Path = "/"
+		}
+		files.ServeHTTP(w, r)
+	})
+}
+
+// Start binds 127.0.0.1:port and serves in the background.
+func (s *Server) Start() error {
+	addr := fmt.Sprintf("127.0.0.1:%d", s.opts.Port)
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		s.core.SetMCPStatus(core.MCPStatus{Error: fmt.Sprintf("cannot listen on %s: %v", addr, err)})
+		return err
+	}
+	s.ln = ln
+	s.http = &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	url := "http://" + ln.Addr().String()
+	s.core.SetMCPStatus(core.MCPStatus{Running: true, URL: url + "/mcp"})
+	go func() {
+		if err := s.http.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("http server stopped", "err", err)
+			s.core.SetMCPStatus(core.MCPStatus{Error: err.Error()})
+		}
+	}()
+	return nil
+}
+
+// URL is the base URL once started.
+func (s *Server) URL() string {
+	if s.ln == nil {
+		return ""
+	}
+	return "http://" + s.ln.Addr().String()
+}
+
+// Shutdown stops the server gracefully and marks MCP as stopped.
+func (s *Server) Shutdown(ctx context.Context) error {
+	if s.http == nil {
+		return nil
+	}
+	s.core.SetMCPStatus(core.MCPStatus{})
+	return s.http.Shutdown(ctx)
+}
