@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=CodeDiver
+GenericName=Code Explorer
+Comment=Explore code visually with your AI agent
+Exec=codediver
+Icon=codediver
+Terminal=false
+Categories=Development;IDE;
+Keywords=code;git;diff;graph;mcp;agent;
+StartupWMClass=codediver

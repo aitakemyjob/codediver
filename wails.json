@@ -1,0 +1,20 @@
+{
+  "$schema": "https://wails.io/schemas/config.v2.json",
+  "name": "CodeDiver",
+  "outputfilename": "codediver",
+  "frontend:install": "npm ci",
+  "frontend:build": "npm run build",
+  "frontend:dev:watcher": "npm run dev",
+  "frontend:dev:serverUrl": "auto",
+  "wailsjsdir": "",
+  "author": {
+    "name": "CodeDiver contributors"
+  },
+  "info": {
+    "companyName": "CodeDiver",
+    "productName": "CodeDiver",
+    "productVersion": "0.1.0",
+    "copyright": "Copyright © CodeDiver contributors",
+    "comments": "Visual code exploration with a built-in MCP server for coding agents"
+  }
+}
