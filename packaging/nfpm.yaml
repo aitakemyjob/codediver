@@ -3,6 +3,8 @@ name: codediver
 arch: ${ARCH}
 platform: linux
 version: ${VERSION}
+# Take the version verbatim (e.g. 0.1.0~rc.2) instead of parsing it as semver.
+version_schema: none
 section: devel
 priority: optional
 maintainer: CodeDiver contributors

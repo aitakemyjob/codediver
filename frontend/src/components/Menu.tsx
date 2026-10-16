@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 
 export interface MenuItem {
   key: string;
@@ -10,13 +11,38 @@ export interface MenuItem {
   separator?: boolean;
 }
 
-/** Minimal dropdown anchored under its trigger. */
+/**
+ * Dropdown anchored under its trigger. The panel is rendered into a portal
+ * with fixed positioning so containers with overflow clipping or
+ * backdrop-filter (like the title bar) can never hide it.
+ */
 export function Menu({ trigger, items, align = 'left', width = 260 }: { trigger: (open: boolean) => ReactNode; items: MenuItem[]; align?: 'left' | 'right'; width?: number }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number }>();
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Position the panel under the trigger, kept inside the viewport.
+  useLayoutEffect(() => {
+    if (!open) return;
+    const place = () => {
+      const r = triggerRef.current?.getBoundingClientRect();
+      if (!r) return;
+      const w = Math.min(width, window.innerWidth - 16);
+      const left = align === 'right' ? r.right - w : r.left;
+      setPos({ top: r.bottom + 6, left: Math.max(8, Math.min(left, window.innerWidth - w - 8)) });
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [open, align, width]);
+
   useEffect(() => {
     if (!open) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const close = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!triggerRef.current?.contains(t) && !panelRef.current?.contains(t)) setOpen(false);
+    };
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
     window.addEventListener('mousedown', close);
     window.addEventListener('keydown', esc);
@@ -25,36 +51,45 @@ export function Menu({ trigger, items, align = 'left', width = 260 }: { trigger:
       window.removeEventListener('keydown', esc);
     };
   }, [open]);
+
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
-      <div onClick={() => setOpen((o) => !o)}>{trigger(open)}</div>
-      {open && (
-        <div
-          className="modal"
-          style={{ position: 'absolute', top: 'calc(100% + 6px)', [align]: 0, width, maxHeight: 420, padding: 6, zIndex: 40, animationDuration: '.12s' }}
-        >
-          <div style={{ overflow: 'auto' }}>
-            {items.map((it) =>
-              it.separator ? (
-                <div key={it.key} style={{ height: 1, background: 'var(--border)', margin: '6px 4px' }} />
-              ) : (
-                <div
-                  key={it.key}
-                  className={`palette-item ${it.active ? 'on' : ''}`}
-                  onClick={() => {
-                    setOpen(false);
-                    it.onSelect?.();
-                  }}
-                >
-                  {it.icon && <span className="pi-icon">{it.icon}</span>}
-                  <span className="ellipsis">{it.label}</span>
-                  {it.hint && <span className="pi-sub ellipsis">{it.hint}</span>}
-                </div>
-              ),
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    <>
+      <div ref={triggerRef} onClick={() => setOpen((o) => !o)}>
+        {trigger(open)}
+      </div>
+      {open &&
+        pos &&
+        createPortal(
+          <div
+            ref={panelRef}
+            role="menu"
+            className="modal"
+            style={{ position: 'fixed', top: pos.top, left: pos.left, width: Math.min(width, window.innerWidth - 16), maxHeight: 420, padding: 6, zIndex: 60, animationDuration: '.12s' }}
+          >
+            <div style={{ overflow: 'auto' }}>
+              {items.map((it) =>
+                it.separator ? (
+                  <div key={it.key} style={{ height: 1, background: 'var(--border)', margin: '6px 4px' }} />
+                ) : (
+                  <div
+                    key={it.key}
+                    role="menuitem"
+                    className={`palette-item ${it.active ? 'on' : ''}`}
+                    onClick={() => {
+                      setOpen(false);
+                      it.onSelect?.();
+                    }}
+                  >
+                    {it.icon && <span className="pi-icon">{it.icon}</span>}
+                    <span className="ellipsis">{it.label}</span>
+                    {it.hint && <span className="pi-sub ellipsis">{it.hint}</span>}
+                  </div>
+                ),
+              )}
+            </div>
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
