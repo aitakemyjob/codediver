@@ -107,7 +107,9 @@ export function focusToTab(f: Focus): NewTab | null {
   const agent = true;
   switch (f.view) {
     case 'code':
-      return { kind: 'code', title: basename(p.file), params: { ...p, flash: Date.now(), message: f.message }, agent };
+      // Only set message when present so a later focus on the same file
+      // doesn't wipe an earlier agent message.
+      return { kind: 'code', title: basename(p.file), params: { ...p, flash: Date.now(), ...(f.message ? { message: f.message } : {}) }, agent };
     case 'graph':
       return { kind: 'graph', title: f.title || 'Graph', params: p, agent };
     case 'flow':

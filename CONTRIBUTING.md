@@ -1,5 +1,19 @@
 # Contributing
 
+Thanks for helping improve CodeDiver! By participating you agree to the
+[Code of Conduct](CODE_OF_CONDUCT.md), and contributions are licensed under
+the [MIT License](LICENSE).
+
+## Workflow
+
+1. For anything non-trivial, open or comment on an issue first so we can
+   agree on the approach.
+2. Fork, create a branch (`feat/...`, `fix/...`, `docs/...`), and keep PRs
+   focused.
+3. Run `make test` before pushing. CI must be green and a maintainer review
+   is required before merging into `main`; PRs are squash-merged.
+4. Use clear commit/PR titles, e.g. `fix: trace graph misses method values`.
+
 ## Setup
 
 ```sh

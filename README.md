@@ -12,6 +12,7 @@
   <a href="https://github.com/aitakemyjob/codediver/actions/workflows/ci.yml"><img src="https://github.com/aitakemyjob/codediver/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
   <a href="https://github.com/aitakemyjob/codediver/releases/latest"><img src="https://img.shields.io/github/v/release/aitakemyjob/codediver?sort=semver" alt="Latest release" /></a>
   <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-4fc3f7" alt="Platforms" />
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/aitakemyjob/codediver" alt="MIT license" /></a>
 </p>
 
 CodeDiver is a desktop app that turns a repository into things you can *see*:
@@ -158,8 +159,20 @@ writes `checksums.txt` and publishes a GitHub release. Tags with a suffix like
 `MACOS_CODESIGN_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID` and
 `APPLE_APP_PASSWORD` repository secrets.
 
+## Contributing
+
+Contributions are welcome! Start with [CONTRIBUTING.md](CONTRIBUTING.md), browse
+[good first issues](https://github.com/aitakemyjob/codediver/labels/good%20first%20issue),
+and please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Questions go to
+[Discussions](https://github.com/aitakemyjob/codediver/discussions); security
+reports to [SECURITY.md](SECURITY.md).
+
 ## Documentation
 
 - [Architecture](docs/ARCHITECTURE.md) — packages, design principles, how to extend
 - [MCP tool reference](docs/MCP.md) — every tool agents can call
 - [Contributing](CONTRIBUTING.md) — setup, conventions, branding and releases
+
+## License
+
+[MIT](LICENSE)

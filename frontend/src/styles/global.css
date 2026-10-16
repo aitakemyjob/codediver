@@ -50,11 +50,14 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
 /* ---------- App frame ---------- */
 .app {
   display: grid;
-  grid-template-rows: var(--titlebar-h) 1fr var(--statusbar-h);
+  grid-template-rows: var(--titlebar-h) minmax(0, 1fr) var(--statusbar-h);
+  /* minmax(0, …) keeps wide content (many tabs, long paths) from widening the window. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh;
+  overflow: hidden;
   background: var(--bg);
 }
-.workbench { display: flex; min-height: 0; }
+.workbench { display: flex; min-height: 0; min-width: 0; }
 .center { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg-1); border-left: 1px solid var(--border); }
 .center.with-inspector { border-right: 1px solid var(--border); }
 
@@ -66,6 +69,7 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
   backdrop-filter: blur(12px);
   --wails-draggable: drag;
   position: relative; z-index: 20;
+  min-width: 0; overflow: hidden;
 }
 .titlebar.mac { padding-left: 84px; }
 .titlebar > * { --wails-draggable: no-drag; }
@@ -352,7 +356,10 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; min-height: 
 .fnode .kind { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); margin-bottom: 3px; font-family: var(--font-ui); }
 .fnode .step-note { margin-top: 6px; padding-top: 6px; border-top: 1px dashed var(--border); font-family: var(--font-ui); color: var(--text-2); font-size: 11px; white-space: normal; }
 
-.sigcard { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto minmax(0,1fr); gap: 14px; align-items: stretch; padding: 14px; border-bottom: 1px solid var(--border); background: var(--bg-1); }
+.sigcard { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto minmax(0,1fr); gap: 14px; align-items: start; padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--bg-1); max-height: 32%; overflow: auto; flex: none; }
+.sigcard .io { gap: 4px; }
+.sigcard .param { padding: 5px 9px; }
+.sigcard .flowarrow { align-self: center; }
 .sigcard .io { display: flex; flex-direction: column; gap: 6px; }
 .sigcard .io h4 { margin: 0; font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--text-3); }
 .sigcard .param { display: flex; flex-direction: column; gap: 2px; padding: 7px 10px; border-radius: 8px; background: var(--bg-2); border: 1px solid var(--border); }
@@ -360,7 +367,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; min-height: 
 .sigcard .param .pn b { color: var(--text); font-weight: 600; }
 .sigcard .param .pn span { color: var(--syn-type); }
 .sigcard .param .pd { font-size: 11.5px; color: var(--text-2); }
-.sigcard .fn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 10px 18px; border-radius: 12px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); min-width: 180px; text-align: center; }
+.sigcard .fn { align-self: center; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 10px 18px; border-radius: 12px; background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); min-width: 180px; text-align: center; }
 .sigcard .fn b { font-family: var(--font-mono); font-size: 14px; }
 .sigcard .fn small { color: var(--text-2); }
 .sigcard .flowarrow { display: flex; align-items: center; color: var(--text-3); }

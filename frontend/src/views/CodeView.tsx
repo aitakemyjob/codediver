@@ -112,6 +112,8 @@ export default function CodeView({ tab, active }: ViewProps) {
       guides: { indentation: true, bracketPairs: true },
       contextmenu: true,
       links: false,
+      // A reader, not an editor: don't box legitimate unicode like − or →.
+      unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
     });
     editorRef.current = ed;
     hlRef.current = ed.createDecorationsCollection();
@@ -249,17 +251,23 @@ export default function CodeView({ tab, active }: ViewProps) {
   useEffect(() => {
     if (state.loading) return;
     const notes = s.session.annotations.filter((a: Annotation) => a.file === file);
+    const model = editorRef.current?.getModel();
     annoRef.current?.set(
-      notes.map((a) => ({
-        range: new monaco.Range(a.line, 1, a.end_line || a.line, 1),
-        options: {
-          isWholeLine: true,
-          glyphMarginClassName: `gd-anno-glyph gd-anno-${annoColor[a.kind] ?? 'info'}`,
-          glyphMarginHoverMessage: { value: `**${a.kind}** — ${a.text}` },
-          hoverMessage: { value: `🤖 **Agent ${a.kind}:** ${a.text}` },
-          after: { content: `   ◆ ${a.text.length > 90 ? a.text.slice(0, 87) + '…' : a.text}`, inlineClassName: 'gd-anno-inline' },
-        },
-      })),
+      notes.map((a) => {
+        const end = Math.min(a.end_line || a.line, model?.getLineCount() ?? a.line);
+        return {
+          // End the range at the end of its last line so the inline note
+          // (`after` text) renders after the code instead of before it.
+          range: new monaco.Range(a.line, 1, end, model?.getLineMaxColumn(end) ?? 1),
+          options: {
+            isWholeLine: true,
+            glyphMarginClassName: `gd-anno-glyph gd-anno-${annoColor[a.kind] ?? 'info'}`,
+            glyphMarginHoverMessage: { value: `**${a.kind}** — ${a.text}` },
+            hoverMessage: { value: `🤖 **Agent ${a.kind}:** ${a.text}` },
+            after: { content: `   ◆ ${a.text.length > 90 ? a.text.slice(0, 87) + '…' : a.text}`, inlineClassName: 'gd-anno-inline' },
+          },
+        };
+      }),
     );
   }, [s.session.annotations, file, state.loading]);
 

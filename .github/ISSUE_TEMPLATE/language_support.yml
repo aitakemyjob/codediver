@@ -1,0 +1,32 @@
+name: Language support
+description: Request (or improve) analysis for a programming language.
+labels: [language-support, enhancement, triage]
+body:
+  - type: input
+    id: language
+    attributes:
+      label: Language
+      placeholder: Elixir, Vue single-file components, Zig...
+    validations:
+      required: true
+  - type: dropdown
+    id: today
+    attributes:
+      label: Current support
+      options:
+        - Not supported (syntax highlighting only)
+        - Lexical analysis is missing or wrong symbols
+        - Call graph edges are missing or wrong
+        - Want control-flow (logic view) support
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Example code
+      description: A small snippet where CodeDiver gets it wrong or what it should detect.
+      render: text
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should CodeDiver show?

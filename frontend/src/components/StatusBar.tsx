@@ -50,7 +50,7 @@ export function StatusBar() {
           {mcp?.running ? <span className="mono">{mcp.url}</span> : mcp?.error ? <span style={{ color: 'var(--err)' }}>MCP error</span> : 'MCP off'}
         </span>
         <span className="item">
-          <Activity size={12} /> v{s.app?.version}
+          <Activity size={12} /> {s.app?.version?.startsWith('v') ? '' : 'v'}{s.app?.version}
         </span>
       </div>
     </footer>

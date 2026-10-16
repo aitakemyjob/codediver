@@ -29,6 +29,7 @@ export default function DiffEditor({ original, modified, language, inline = fals
       hideUnchangedRegions: { enabled: true, contextLineCount: 4, minimumLineCount: 6, revealLineCount: 20 },
       diffAlgorithm: 'advanced',
       padding: { top: 8 },
+      unicodeHighlight: { ambiguousCharacters: false, invisibleCharacters: false },
     });
     ed.current = d;
     return () => {

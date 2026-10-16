@@ -227,11 +227,13 @@ export function mermaidVars(t: Theme) {
     actorBorder: t.accent,
     actorTextColor: t.text,
     signalColor: t.text2,
-    signalTextColor: t.text,
     noteBkgColor: alpha(t.accent2, 0.18),
     noteTextColor: t.text,
     noteBorderColor: t.accent2,
     labelBoxBkgColor: t.bg2,
+    // Sequence-diagram step numbers: accent circles with readable digits.
+    sequenceNumberColor: t.accentFg,
+    signalTextColor: t.text,
     fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
   };
 }

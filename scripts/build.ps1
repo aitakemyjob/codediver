@@ -58,9 +58,9 @@ try {
   $cfg | ConvertTo-Json -Depth 10 | Set-Content wails.json -Encoding utf8
 
   Say "building $App $Version for windows/$Arch"
-  $args = @('build', '-clean', '-platform', "windows/$Arch", '-trimpath', '-ldflags', $ldflags)
-  if ($Package -and $nsis) { $args += '-nsis' }
-  & $wails @args
+  $wailsArgs = @('build', '-clean', '-platform', "windows/$Arch", '-trimpath', '-ldflags', $ldflags)
+  if ($Package -and $nsis) { $wailsArgs += '-nsis' }
+  & $wails @wailsArgs
   if ($LASTEXITCODE -ne 0) { throw "wails build failed ($LASTEXITCODE)" }
 }
 finally {
