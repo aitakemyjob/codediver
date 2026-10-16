@@ -31,6 +31,7 @@ const (
 	EvIndex       = "index"
 	EvContext     = "context"
 	EvMCP         = "mcp"
+	EvQA          = "qa"
 )
 
 var ErrAgentDisabled = errors.New("agent access is disabled in CodeDiver settings")
@@ -40,6 +41,8 @@ type Service struct {
 	Bus       *events.Bus
 	Proposals *proposals.Store
 	Version   string
+	// CacheDir holds saved coverage and coverage-run scratch output.
+	CacheDir string
 
 	mu      sync.Mutex
 	repos   map[string]*RepoHandle
@@ -62,6 +65,7 @@ func New(cfg *config.Store, version string) *Service {
 		Bus:       events.NewBus(),
 		Proposals: proposals.NewStore(),
 		Version:   version,
+		CacheDir:  defaultCacheDir(),
 		repos:     map[string]*RepoHandle{},
 		session:   newSession(),
 	}
@@ -74,6 +78,7 @@ type RepoHandle struct {
 	ws  *workspace.Workspace
 	git *gitx.Repo
 	idx indexCache
+	qa  qaState
 }
 
 // runtime returns the cached handle for a repo, creating it on first use

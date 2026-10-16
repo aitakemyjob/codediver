@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Bot, File, Flame, FolderPlus, GitCompare, LayoutDashboard, Network, Palette, PanelRight, RefreshCw, Settings } from 'lucide-react';
+import { Bot, File, Flame, FolderPlus, GitCompare, LayoutDashboard, Network, Palette, PanelRight, RefreshCw, Settings, FlaskConical, Play } from 'lucide-react';
 import { api } from '../lib/api';
 import { actions } from '../lib/actions';
 import { useStore } from '../lib/store';
@@ -84,6 +84,9 @@ export function CommandPalette() {
       ...Object.entries(s.app?.heatMetrics ?? {}).map(([m, label]) => ({
         key: `c-heat-${m}`, group: 'Commands', icon: <Flame size={14} />, label: `Heatmap: ${m}`, sub: label, run: () => actions.heatmap(m),
       })),
+      { key: 'c-qa', group: 'Commands', icon: <FlaskConical size={14} />, label: 'QA: tests & coverage', run: () => actions.qa() },
+      { key: 'c-qa-gaps', group: 'Commands', icon: <FlaskConical size={14} />, label: 'QA: untested code (gaps)', run: () => actions.qa('gaps') },
+      { key: 'c-qa-run', group: 'Commands', icon: <Play size={14} />, label: 'Run coverage', run: () => { actions.qa(); actions.runCoverage(); } },
       { key: 'c-deps', group: 'Commands', icon: <Network size={14} />, label: 'Show package dependencies', run: () => actions.deps() },
       { key: 'c-diff', group: 'Commands', icon: <GitCompare size={14} />, label: 'Review working changes', run: () => s.open({ kind: 'diff', title: 'Changes', params: {} }) },
       { key: 'c-connect', group: 'Commands', icon: <Bot size={14} />, label: 'Connect an agent (MCP)', run: () => s.setConnectOpen(true) },

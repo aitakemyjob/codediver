@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bot, GitFork, History, ListTree, Route, Workflow, X } from 'lucide-react';
+import { Bot, FlaskConical, GitFork, History, ListTree, Route, Workflow, X } from 'lucide-react';
 import { FileSummaryPanel } from '../components/FileSummaryPanel';
 import { monaco, setMonacoTheme } from '../lib/monaco';
 import { api } from '../lib/api';
 import { actions } from '../lib/actions';
 import { useStore } from '../lib/store';
-import type { Annotation, FileSymbol } from '../lib/types';
+import type { Annotation, FileCoverage, FileSymbol, FuncQA } from '../lib/types';
 import { ErrorBox, Spinner } from '../components/ui';
 import type { ViewProps } from './ViewHost';
 
@@ -18,6 +18,8 @@ export const monacoLang = (l: string) => langMap[l] ?? l;
 // One code-lens provider and command set for all editors; per-model symbols
 // live in this registry.
 const symbolsByModel = new Map<string, FileSymbol[]>();
+// Per-model function test status (by symbol id), shown as a coverage lens.
+const coverageByModel = new Map<string, Map<string, FuncQA>>();
 let lensesRegistered = false;
 const lensEmitter = new monaco.Emitter<monaco.languages.CodeLensProvider>();
 let lensProvider: monaco.languages.CodeLensProvider | undefined;
@@ -33,10 +35,12 @@ function registerLenses() {
   monaco.editor.registerCommand('gd.callees', (_a: unknown, s: FileSymbol) => actions.callGraph(s, 'callees'));
   monaco.editor.registerCommand('gd.trace', (_a: unknown, s: FileSymbol) => actions.trace(s));
   monaco.editor.registerCommand('gd.flow', (_a: unknown, s: FileSymbol) => actions.flow(s));
+  monaco.editor.registerCommand('gd.qa', () => actions.qa('gaps'));
   lensProvider = {
     onDidChange: lensEmitter.event,
     provideCodeLenses(model) {
       const syms = symbolsByModel.get(model.uri.toString()) ?? [];
+      const cov = coverageByModel.get(model.uri.toString());
       const lenses: { range: monaco.IRange; command: { id: string; title: string; arguments?: unknown[] } }[] = [];
       for (const s of syms) {
         if (!s.line) continue;
@@ -47,6 +51,12 @@ function registerLenses() {
           lenses.push({ range, command: { id: 'gd.callees', title: `↗ ${s.callees} call${s.callees === 1 ? '' : 's'}`, arguments: [s] } });
           lenses.push({ range, command: { id: 'gd.trace', title: '⇢ trace to here', arguments: [s] } });
           lenses.push({ range, command: { id: 'gd.flow', title: '◇ logic', arguments: [s] } });
+          const q = cov?.get(s.id);
+          if (q && (q.pct >= 0 || q.direct + q.indirect > 0 || q.risk > 0)) {
+            const tests = q.direct ? ` · ${q.direct} test${q.direct === 1 ? '' : 's'}` : q.indirect ? ` · ${q.indirect} indirect` : ' · no tests';
+            const title = q.pct >= 0 ? `${q.pct >= 80 ? '✓' : q.pct > 0 ? '◐' : '✗'} ${q.pct}% covered${tests}` : `${q.direct + q.indirect ? '◐' : '✗'}${tests.slice(2)}`;
+            lenses.push({ range, command: { id: 'gd.qa', title, arguments: [] } });
+          }
         } else if (s.kind !== 'external') {
           lenses.push({ range, command: { id: 'gd.inspect', title: `${s.kind}${s.methods?.length ? ` · ${s.methods.length} methods` : ''}`, arguments: [s.id] } });
         }
@@ -76,6 +86,8 @@ export default function CodeView({ tab, active }: ViewProps) {
   const hlRef = useRef<monaco.editor.IEditorDecorationsCollection>(null);
   const annoRef = useRef<monaco.editor.IEditorDecorationsCollection>(null);
   const gitRef = useRef<monaco.editor.IEditorDecorationsCollection>(null);
+  const covRef = useRef<monaco.editor.IEditorDecorationsCollection>(null);
+  const [coverage, setCoverage] = useState<FileCoverage>();
   const [state, setState] = useState<{ loading: boolean; error?: unknown; binary?: boolean }>({ loading: true });
   const [banner, setBanner] = useState(message);
   // Opened by the button, or by an agent via get_file_summary(show=true).
@@ -119,6 +131,7 @@ export default function CodeView({ tab, active }: ViewProps) {
     hlRef.current = ed.createDecorationsCollection();
     annoRef.current = ed.createDecorationsCollection();
     gitRef.current = ed.createDecorationsCollection();
+    covRef.current = ed.createDecorationsCollection();
 
     const symbolAt = (ln: number) => {
       let best: FileSymbol | undefined;
@@ -171,7 +184,10 @@ export default function CodeView({ tab, active }: ViewProps) {
     ed.onDidFocusEditorText(report);
     return () => {
       const uri = ed.getModel()?.uri.toString();
-      if (uri) symbolsByModel.delete(uri);
+      if (uri) {
+        symbolsByModel.delete(uri);
+        coverageByModel.delete(uri);
+      }
       ed.getModel()?.dispose();
       ed.dispose();
     };
@@ -220,6 +236,40 @@ export default function CodeView({ tab, active }: ViewProps) {
       alive = false;
     };
   }, [file, s.repoId, s.refreshKey]);
+
+  // Test coverage: gutter markers and per-function lenses.
+  const showCoverage = s.showCoverage || !!tab.params.coverage;
+  useEffect(() => {
+    let alive = true;
+    api.qaFile(s.repoId, file).then(
+      (c) => alive && setCoverage(c),
+      () => alive && setCoverage(undefined),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [file, s.repoId, s.qaVersion, s.refreshKey]);
+  useEffect(() => {
+    const model = editorRef.current?.getModel();
+    if (!model || state.loading) return;
+    const uri = model.uri.toString();
+    coverageByModel.set(uri, new Map((coverage?.functions ?? []).map((f) => [f.id, f])));
+    refreshLenses();
+    if (!coverage?.available || !showCoverage) {
+      covRef.current?.clear();
+      return;
+    }
+    const n = model.getLineCount();
+    const partial = new Set(coverage.partial);
+    const deco: monaco.editor.IModelDeltaDecoration[] = [];
+    for (const ln of coverage.covered) {
+      if (ln <= n) deco.push({ range: new monaco.Range(ln, 1, ln, 1), options: { isWholeLine: true, linesDecorationsClassName: partial.has(ln) ? 'gd-cov-part' : 'gd-cov-hit' } });
+    }
+    for (const ln of coverage.uncovered) {
+      if (ln <= n) deco.push({ range: new monaco.Range(ln, 1, ln, 1), options: { isWholeLine: true, className: 'gd-cov-miss-line', linesDecorationsClassName: 'gd-cov-miss' } });
+    }
+    covRef.current?.set(deco);
+  }, [coverage, showCoverage, state.loading]);
 
   // Highlight & reveal requested range.
   useEffect(() => {
@@ -298,6 +348,15 @@ export default function CodeView({ tab, active }: ViewProps) {
           ))}
         </div>
         <div className="grow" />
+        {coverage?.available && (
+          <button
+            className={`btn sm ${showCoverage ? 'active' : ''}`}
+            onClick={() => s.setShowCoverage(!showCoverage)}
+            title={`${showCoverage ? 'Hide' : 'Show'} covered (green), partial (amber) and uncovered (red) lines${coverage.stale ? '. The file changed since the coverage report, so markers may be off' : ''}`}
+          >
+            <FlaskConical size={13} /> {coverage.pct}%{coverage.stale ? ' · stale' : ''}
+          </button>
+        )}
         <button className="btn sm" title="Alt+T" onClick={withSym(actions.trace)}><Route size={13} /> Trace to here</button>
         <button className={`btn sm ${summaryOpen ? 'active' : ''}`} title="Functions, types, variables and imports in this file (Alt+S)" onClick={() => setSummaryOpen(!summaryOpen)}>
           <ListTree size={13} /> Summary

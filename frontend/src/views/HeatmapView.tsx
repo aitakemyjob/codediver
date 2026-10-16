@@ -10,7 +10,7 @@ import { ErrorBox, Spinner, useAsync, useSize } from '../components/ui';
 import type { ViewProps } from './ViewHost';
 
 const metricLabels: Record<string, string> = {
-  churn: 'Churn', changes: 'Diff', proposals: 'Proposals', complexity: 'Complexity', agent: 'Agent focus', size: 'Size',
+  churn: 'Churn', changes: 'Diff', proposals: 'Proposals', complexity: 'Complexity', agent: 'Agent focus', size: 'Size', coverage: 'Uncovered',
 };
 
 /**

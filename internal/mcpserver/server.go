@@ -25,6 +25,9 @@ Use it to help the developer understand and change code VISUALLY:
   get_dependencies, git_diff and get_heatmap. Pass show=true to put the result on the developer's screen.
 - Teach with start_walkthrough (step-by-step code tour), explain_function (inputs, outputs and logic of a
   function, rendered next to its control-flow graph), show_diagram (mermaid or nodes/edges) and annotate_code.
+- Test with get_test_overview, get_coverage, get_tests_for and find_test_gaps (coverage, behaviors, untested
+  functions and what makes them hard to test); show_test_plan puts a plan for closing a gap on screen.
+  You cannot run tests: ask the developer to click Run coverage in the QA view when coverage is missing or stale.
 - Change code ONLY with propose_changes. The developer reviews a visual diff, heatmap and blast-radius
   graph, then accepts or rejects; poll get_proposal for the decision and feedback. Never assume a proposal
   was applied until get_proposal says so.
@@ -56,6 +59,7 @@ func New(c *core.Service) *Server {
 		},
 	})
 	s.register()
+	s.registerQA()
 	return s
 }
 

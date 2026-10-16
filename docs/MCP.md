@@ -35,7 +35,29 @@ developer's screen.
 | `git_status` | Branch and changed files. |
 | `git_diff` | Files changed, +/−, functions touched and affected callers; `patch: true` for full hunks. |
 | `git_log` | Recent commits with files; optionally for one path. |
-| `get_heatmap` | Files ranked by `churn`, `changes`, `proposals`, `complexity`, `agent` or `size`. |
+| `get_heatmap` | Files ranked by `churn`, `changes`, `proposals`, `complexity`, `agent`, `size` or `coverage` (uncovered lines). |
+
+## Testing & coverage
+
+Coverage comes from report files your own test tooling writes (Go
+coverprofile, LCOV, Cobertura XML, JaCoCo XML), either left in the repository
+(`coverage.out`, `coverage/lcov.info`, …) or produced when the developer clicks
+**Run coverage** in the QA view. **Agents cannot run tests or commands**; the
+tools below say when coverage is missing or stale so the agent can ask.
+
+Tests are discovered statically for Go, JS/TS (Jest, Vitest, Mocha, Playwright,
+node:test), Python (pytest, unittest), Java/Kotlin (JUnit), C# (xUnit, NUnit,
+MSTest), Rust, Ruby (RSpec, minitest), Swift (XCTest), PHP (PHPUnit), C++
+(GoogleTest) and Dart. Each test is mapped to the code it calls by name and
+package; reach through callers comes from the call graph.
+
+| Tool | Purpose |
+|---|---|
+| `get_test_overview` | Line coverage and its source/age, test and behavior counts per framework, least-covered directories and the riskiest under-tested functions. |
+| `get_coverage` | For a file: % covered, uncovered and partially covered line ranges, coverage per function. For a directory or the repo: per-file table, worst first. `show: true` opens the file with gutter markers. |
+| `get_tests_for` | Tests that exercise a function directly or through its callers, with the behavior each describes; or, for a test file, every behavior and the code each test calls. |
+| `find_test_gaps` | Functions ranked by risk (missing coverage × complexity × callers × visibility) with uncovered ranges and testability problems — hard-wired clock, randomness, env vars, network, filesystem, processes, sleeps, process exits, browser globals, high complexity — each with the refactor that fixes it. |
+| `show_test_plan` | Show a plan in the QA view: behaviors to test (kind, given/when/then, the line each exercises, existing tests that already cover it) and refactors needed first. Follow with `propose_changes` for the tests. |
 
 ## Presenting to the developer
 
@@ -61,3 +83,6 @@ developer's screen.
 3. `trace_to` or `get_call_graph` with `show: true` → show the shape.
 4. `explain_function` or `start_walkthrough` → teach.
 5. `propose_changes` → let the developer review; poll `get_proposal`.
+
+For "what isn't tested?": `get_test_overview` → `find_test_gaps` →
+`get_tests_for` → `show_test_plan` → `propose_changes` with the new tests.

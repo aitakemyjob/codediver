@@ -4,7 +4,7 @@ import { getTransport } from './transport';
 import { activate, closeOthers, closeTab, focusToTab, openTab, type NewTab, type Tab } from './tabs';
 import { applyTheme, themeById, type Theme } from './themes';
 import type {
-  Activity, AppState, BusEvent, Diagram, Explanation, Focus, MCPStatus, Proposal, SessionData, Settings, Walkthrough, Annotation,
+  Activity, AppState, BusEvent, Diagram, Explanation, Focus, MCPStatus, Proposal, QARun, SessionData, Settings, TestPlan, Walkthrough, Annotation,
 } from './types';
 
 export type SidebarPanel = 'explorer' | 'search' | 'changes' | 'agent' | 'outline';
@@ -50,6 +50,12 @@ interface Store {
   addRepoOpen: boolean;
   refreshKey: number;
   agentPulse: number;
+  /** The current/last coverage run for the active repo (log streamed in). */
+  qaRun?: QARun;
+  /** Bumped when coverage, runs or test plans change, so QA views refetch. */
+  qaVersion: number;
+  /** Whether code views mark covered/uncovered lines in the gutter. */
+  showCoverage: boolean;
 
   /** Connects to the backend, loads state and opens the overview. */
   init(): Promise<void>;
@@ -97,6 +103,20 @@ interface Store {
   handleEvent(ev: BusEvent): void;
   /** Bumps refreshKey so views refetch their data. */
   bump(): void;
+  /** Replaces the tracked coverage run (e.g. after loading the last one). */
+  setQARun(run?: QARun): void;
+  /** Toggles coverage markers in code views (remembered per browser). */
+  setShowCoverage(on: boolean): void;
+}
+
+/** Reads a boolean preference from localStorage, tolerating failures. */
+function pref(key: string, fallback: boolean): boolean {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : v === '1';
+  } catch {
+    return fallback;
+  }
 }
 
 const emptySession: SessionData = { walkthroughs: [], diagrams: [], explanations: [], annotations: [] };
@@ -130,6 +150,8 @@ export const useStore = create<Store>((set, get) => ({
   addRepoOpen: false,
   refreshKey: 0,
   agentPulse: 0,
+  qaVersion: 0,
+  showCoverage: pref('cd.showCoverage', true),
 
   /** See Store.init. */
   async init() {
@@ -168,8 +190,12 @@ export const useStore = create<Store>((set, get) => ({
   async loadRepoData() {
     const repo = get().repoId;
     if (!repo) return;
-    const [proposals, session] = await Promise.all([api.proposals(repo).catch(() => []), api.session(repo).catch(() => emptySession)]);
-    set({ proposals: proposals ?? [], session: session ?? emptySession });
+    const [proposals, session, qaRun] = await Promise.all([
+      api.proposals(repo).catch(() => []),
+      api.session(repo).catch(() => emptySession),
+      api.qaLastRun(repo).catch(() => null),
+    ]);
+    set({ proposals: proposals ?? [], session: session ?? emptySession, qaRun: qaRun ?? undefined });
   },
 
   /** See Store.setRepo. */
@@ -253,6 +279,19 @@ export const useStore = create<Store>((set, get) => ({
   setAddRepoOpen(open) {
     set({ addRepoOpen: open });
   },
+  /** See Store.setQARun. */
+  setQARun(run) {
+    set({ qaRun: run });
+  },
+  /** See Store.setShowCoverage. */
+  setShowCoverage(on) {
+    try {
+      localStorage.setItem('cd.showCoverage', on ? '1' : '0');
+    } catch {
+      /* preference just won't persist */
+    }
+    set({ showCoverage: on });
+  },
   /** See Store.bump. */
   bump() {
     set((s) => ({ refreshKey: s.refreshKey + 1 }));
@@ -329,6 +368,31 @@ export const useStore = create<Store>((set, get) => ({
       case 'explain': {
         const x = ev.data as Explanation;
         if (x.repo === repo) set((st) => ({ session: { ...st.session, explanations: upsert(st.session.explanations, x) } }));
+        break;
+      }
+      case 'qa': {
+        const d = ev.data as { repo: string; kind: string; run?: QARun; lines?: string[]; plan?: TestPlan };
+        if (d.repo !== repo) break;
+        if (d.kind === 'run' && d.run) {
+          const prev = get().qaRun;
+          const log = prev && prev.id === d.run.id ? prev.log ?? [] : [];
+          set((st) => ({ qaRun: { ...d.run!, log }, qaVersion: d.run!.state === 'running' ? st.qaVersion : st.qaVersion + 1 }));
+          if (prev?.state === 'running' && d.run.state !== 'running') {
+            const failed = d.run.suites.filter((x) => x.state !== 'passed');
+            s.toast(
+              d.run.state === 'done'
+                ? { kind: 'ok', title: 'Coverage updated', body: d.run.suites.map((x) => x.name).join(', ') }
+                : { kind: d.run.state === 'cancelled' ? 'info' : 'warn', title: `Coverage run ${d.run.state}`, body: failed.map((x) => `${x.name}: ${x.error || x.state}`).join('\n') },
+            );
+          }
+        } else if (d.kind === 'log' && d.lines) {
+          set((st) => (st.qaRun ? { qaRun: { ...st.qaRun, log: [...(st.qaRun.log ?? []), ...d.lines!].slice(-3000) } } : {}));
+        } else if (d.kind === 'plan' && d.plan) {
+          set((st) => ({ qaVersion: st.qaVersion + 1 }));
+          s.toast({ kind: 'agent', title: 'Agent proposed a test plan', body: d.plan.title });
+        } else {
+          set((st) => ({ qaVersion: st.qaVersion + 1 }));
+        }
         break;
       }
       case 'annotations': {

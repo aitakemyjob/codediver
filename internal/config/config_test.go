@@ -3,6 +3,8 @@ package config
 import (
 	"path/filepath"
 	"testing"
+
+	"github.com/aitakemyjob/codediver/internal/qa"
 )
 
 func TestStoreRoundTrip(t *testing.T) {
@@ -35,6 +37,15 @@ func TestStoreRoundTrip(t *testing.T) {
 	}
 	if _, ok := reopened.FindRepo(""); !ok {
 		t.Fatal("empty ref should resolve to the active repo")
+	}
+	if err := reopened.SetSuites(r.ID, []qa.Suite{{ID: "go:", Command: "go test ./..."}}); err != nil {
+		t.Fatal(err)
+	}
+	if again, _ := Open(path); len(again.Get().Repos[0].Suites) != 1 {
+		t.Fatal("suites were not persisted")
+	}
+	if err := reopened.SetSuites("nope", nil); err == nil {
+		t.Fatal("expected error for unknown repo")
 	}
 	if err := reopened.RemoveRepo(r.ID); err != nil {
 		t.Fatal(err)

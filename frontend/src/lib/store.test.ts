@@ -84,4 +84,29 @@ describe('store', () => {
     f.emit(ev('index', { repo: 'r1', state: 'ready', stats: { files: 3, functions: 4, edges: 5, durationMs: 6 } }));
     expect(useStore.getState().indexStats?.functions).toBe(4);
   });
+
+  it('tracks coverage runs, streams their log and announces test plans', async () => {
+    const f = fakeTransport();
+    setTransport(f.t);
+    await useStore.getState().init();
+    const v0 = useStore.getState().qaVersion;
+    const run = { id: 'run1', repo: 'r1', state: 'running', started: '', suites: [{ id: 'go:', name: 'Go', state: 'running', exitCode: 0, files: 0, durationMs: 0 }], log: null };
+    f.emit(ev('qa', { repo: 'r1', kind: 'run', run }));
+    f.emit(ev('qa', { repo: 'r1', kind: 'log', run: 'run1', lines: ['ok  pkg/a', 'ok  pkg/b'] }));
+    f.emit(ev('qa', { repo: 'other', kind: 'log', run: 'x', lines: ['ignored'] }));
+    expect(useStore.getState().qaRun?.log).toEqual(['ok  pkg/a', 'ok  pkg/b']);
+    expect(useStore.getState().qaVersion).toBe(v0);
+
+    // Status updates keep the streamed log; finishing bumps the version and toasts.
+    f.emit(ev('qa', { repo: 'r1', kind: 'run', run: { ...run, state: 'done', suites: [{ ...run.suites[0], state: 'passed' }] } }));
+    const s = useStore.getState();
+    expect(s.qaRun?.state).toBe('done');
+    expect(s.qaRun?.log).toHaveLength(2);
+    expect(s.qaVersion).toBe(v0 + 1);
+    expect(s.toasts.some((t) => t.title === 'Coverage updated')).toBe(true);
+
+    f.emit(ev('qa', { repo: 'r1', kind: 'plan', plan: { id: 'plan1', title: 'Cover validate', behaviors: [] } }));
+    expect(useStore.getState().qaVersion).toBe(v0 + 2);
+    expect(useStore.getState().toasts.some((t) => t.title === 'Agent proposed a test plan')).toBe(true);
+  });
 });

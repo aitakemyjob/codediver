@@ -14,6 +14,7 @@ import (
 	"github.com/aitakemyjob/codediver/internal/config"
 	"github.com/aitakemyjob/codediver/internal/core"
 	"github.com/aitakemyjob/codediver/internal/gitx"
+	"github.com/aitakemyjob/codediver/internal/qa"
 	"github.com/aitakemyjob/codediver/internal/workspace"
 )
 
@@ -51,6 +52,7 @@ func New(c *core.Service) *API {
 	a.registerCode()
 	a.registerGit()
 	a.registerSession()
+	a.registerQA()
 	return a
 }
 
@@ -359,4 +361,65 @@ func nonNil[T any](s []T) []T {
 		return []T{}
 	}
 	return s
+}
+
+// registerQA adds the QA view's methods: coverage, tests, gaps, suites,
+// coverage runs and agent test plans. Running and configuring suites is
+// only possible from the UI; agents never reach these methods.
+func (a *API) registerQA() {
+	c := a.core
+	withRepo := func(ref string, fn func(rt *core.RepoHandle) (any, error)) (any, error) {
+		rt, err := c.Repo(ref)
+		if err != nil {
+			return nil, err
+		}
+		return fn(rt)
+	}
+	a.methods["qa.overview"] = method(func(ctx context.Context, in struct {
+		Repo string
+		Gaps int
+	}) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { return c.QAOverview(ctx, rt, max(in.Gaps, 150)) })
+	})
+	a.methods["qa.file"] = method(func(ctx context.Context, in struct{ Repo, Path string }) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { return c.FileCoverage(ctx, rt, in.Path) })
+	})
+	a.methods["qa.testsFor"] = method(func(ctx context.Context, in struct{ Repo, Symbol string }) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { return c.TestsFor(ctx, rt, in.Symbol) })
+	})
+	a.methods["qa.suites.save"] = method(func(ctx context.Context, in struct {
+		Repo   string     `json:"repo"`
+		Suites []qa.Suite `json:"suites"`
+	}) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) {
+			if in.Suites == nil {
+				in.Suites = []qa.Suite{}
+			}
+			return nil, c.SaveQASuites(rt, in.Suites)
+		})
+	})
+	a.methods["qa.suites.reset"] = method(func(ctx context.Context, in repoReq) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { return nil, c.ResetQASuites(rt) })
+	})
+	a.methods["qa.run"] = method(func(ctx context.Context, in struct {
+		Repo   string   `json:"repo"`
+		Suites []string `json:"suites"`
+	}) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { return c.RunCoverage(rt, in.Suites) })
+	})
+	a.methods["qa.cancel"] = method(func(ctx context.Context, in repoReq) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { c.CancelCoverage(rt); return nil, nil })
+	})
+	a.methods["qa.lastRun"] = method(func(ctx context.Context, in repoReq) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { return c.LastRun(rt), nil })
+	})
+	a.methods["qa.import"] = method(func(ctx context.Context, in struct{ Repo, Path string }) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { return c.ImportCoverage(rt, in.Path) })
+	})
+	a.methods["qa.clear"] = method(func(ctx context.Context, in repoReq) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { c.ClearCoverage(rt); return nil, nil })
+	})
+	a.methods["qa.plans.dismiss"] = method(func(ctx context.Context, in struct{ Repo, ID string }) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { c.DismissTestPlan(rt, in.ID); return nil, nil })
+	})
 }

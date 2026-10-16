@@ -1,4 +1,5 @@
 // Navigation helpers shared by views, the inspector, the palette and code lenses.
+import { api } from './api';
 import { useStore } from './store';
 import { basename } from './format';
 import type { CodeSymbol } from './types';
@@ -41,6 +42,20 @@ export const actions = {
   /** Opens the heatmap, optionally preselecting a metric. */
   heatmap(metric?: string) {
     open({ kind: 'heatmap', title: 'Heatmap', params: metric ? { metric } : {} });
+  },
+  /** Opens the QA view, optionally on a tab (overview, coverage, behaviors, gaps, plans). */
+  qa(tab?: string, extra: Record<string, unknown> = {}) {
+    open({ kind: 'qa', title: 'QA', params: { ...(tab ? { tab } : {}), ...extra } });
+  },
+  /** Starts a coverage run with every enabled suite. */
+  async runCoverage() {
+    const st = useStore.getState();
+    try {
+      const run = await api.qaRun(st.repoId);
+      st.setQARun({ ...run, log: [] });
+    } catch (e) {
+      st.toast({ kind: 'err', title: 'Could not start coverage', body: e instanceof Error ? e.message : String(e) });
+    }
   },
   /** Opens the commit history of a file. */
   history(path: string) {

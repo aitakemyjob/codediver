@@ -17,6 +17,7 @@ func setup(t *testing.T) *API {
 	t.Helper()
 	store, _ := config.Open(filepath.Join(t.TempDir(), "c.json"))
 	svc := core.New(store, "test")
+	svc.CacheDir = t.TempDir()
 	if _, err := svc.AddRepo(testutil.Repo(t), "shop"); err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +38,8 @@ func call(t *testing.T, a *API, method string, args any) string {
 // panicking; methods needing arguments may return errors.
 func TestAllMethodsSmoke(t *testing.T) {
 	a := setup(t)
-	skip := map[string]bool{"repos.remove": true, "proposals.dismiss": true}
+	// qa.run would really execute the detected `go test` suite.
+	skip := map[string]bool{"repos.remove": true, "proposals.dismiss": true, "qa.run": true}
 	for _, m := range a.Methods() {
 		if skip[m] {
 			continue
@@ -111,5 +113,23 @@ func TestEmptyListsAreArrays(t *testing.T) {
 		if bad {
 			t.Errorf("%s returned nulls: %s", m.method, out)
 		}
+	}
+}
+
+func TestQAMethods(t *testing.T) {
+	a := setup(t)
+	if out := call(t, a, "qa.overview", nil); !strings.Contains(out, `"suites":[{"id":"go:"`) || !strings.Contains(out, `"gaps":[`) {
+		t.Errorf("overview = %.400s", out)
+	}
+	call(t, a, "qa.suites.save", map[string]any{"suites": []map[string]any{{"id": "x", "name": "X", "command": "true", "enabled": true}}})
+	if out := call(t, a, "app.state", nil); !strings.Contains(out, `"command":"true"`) {
+		t.Errorf("suites not saved: %.300s", out)
+	}
+	call(t, a, "qa.suites.reset", nil)
+	if out := call(t, a, "qa.file", map[string]any{"path": "api/api.go"}); !strings.Contains(out, `"available":false`) {
+		t.Errorf("file = %s", out)
+	}
+	if out := call(t, a, "qa.testsFor", map[string]any{"symbol": "validate"}); !strings.Contains(out, `"direct":[]`) {
+		t.Errorf("testsFor = %s", out)
 	}
 }

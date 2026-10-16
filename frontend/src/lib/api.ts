@@ -3,7 +3,7 @@ import { getTransport } from './transport';
 import type {
   AppState, Commit, Config, FileSummary, DiffOverview, DiffSpec, FileContent, FileSymbol, FileVersions, Flow, Graph,
   GitRef, Heatmap, Overview, Proposal, Repo, RepoSummary, SearchMatch, SessionData, Settings, StatusEntry,
-  SymbolDetail, CodeSymbol, TreeNode, Activity, GitInfo,
+  SymbolDetail, CodeSymbol, TreeNode, Activity, GitInfo, QAOverview, FileCoverage, SymbolTests, TestSuite, QARun, CoverageSource,
 } from './types';
 
 /** Calls a backend method through the active transport. */
@@ -100,6 +100,29 @@ export const api = {
   session: (repo: string) => call<SessionData>('session.all', { repo }),
   /** Removes all agent annotations. */
   clearAnnotations: (repo: string) => call<void>('annotations.clear', { repo }),
+
+  /** QA view: coverage, tests, behaviors, gaps, suites, last run and plans. */
+  qaOverview: (repo: string) => call<QAOverview>('qa.overview', { repo }),
+  /** Line coverage and per-function test status for one file. */
+  qaFile: (repo: string, path: string) => call<FileCoverage>('qa.file', { repo, path }),
+  /** Tests that exercise a function directly or through its callers. */
+  qaTestsFor: (repo: string, symbol: string) => call<SymbolTests>('qa.testsFor', { repo, symbol }),
+  /** Saves the repository's coverage suites. */
+  qaSaveSuites: (repo: string, suites: TestSuite[]) => call<void>('qa.suites.save', { repo, suites }),
+  /** Reverts to the detected coverage suites. */
+  qaResetSuites: (repo: string) => call<void>('qa.suites.reset', { repo }),
+  /** Starts a coverage run (all enabled suites, or the given ones). */
+  qaRun: (repo: string, suites: string[] = []) => call<QARun>('qa.run', { repo, suites }),
+  /** Stops the running coverage run. */
+  qaCancel: (repo: string) => call<void>('qa.cancel', { repo }),
+  /** The last coverage run with its log. */
+  qaLastRun: (repo: string) => call<QARun | null>('qa.lastRun', { repo }),
+  /** Imports an existing coverage report file. */
+  qaImport: (repo: string, path: string) => call<CoverageSource>('qa.import', { repo, path }),
+  /** Forgets all coverage data. */
+  qaClear: (repo: string) => call<void>('qa.clear', { repo }),
+  /** Removes an agent test plan. */
+  qaDismissPlan: (repo: string, id: string) => call<void>('qa.plans.dismiss', { repo, id }),
 };
 
 export type { Config };
