@@ -5,6 +5,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"sync/atomic"
+	"time"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -20,24 +23,60 @@ import (
 
 // Desktop is bound into the webview as window.go.main.Desktop.
 type Desktop struct {
-	ctx  context.Context
 	api  *api.API
 	core *core.Service
+
+	// Wails runs OnStartup in a goroutine concurrently with the page load
+	// (on Linux), so the runtime context arrives asynchronously.
+	ctx   atomic.Pointer[context.Context]
+	ready chan struct{}
 }
 
-// Invoke calls an API method; args and result are JSON strings.
+// newDesktop creates the bound object. The folder picker is registered up
+// front (not in startup) so the UI never sees it as unavailable; it waits
+// for the window's runtime context before opening the dialog.
+func newDesktop(a *api.API, c *core.Service) *Desktop {
+	d := &Desktop{api: a, core: c, ready: make(chan struct{})}
+	a.PickDirectory = d.pickDirectory
+	return d
+}
+
+// runtimeCtx returns the Wails runtime context, waiting briefly for
+// startup if it hasn't run yet.
+func (d *Desktop) runtimeCtx() (context.Context, error) {
+	select {
+	case <-d.ready:
+		return *d.ctx.Load(), nil
+	case <-time.After(5 * time.Second):
+		return nil, errors.New("the window is still starting; try again")
+	}
+}
+
+// pickDirectory opens the native folder chooser.
+func (d *Desktop) pickDirectory() (string, error) {
+	ctx, err := d.runtimeCtx()
+	if err != nil {
+		return "", err
+	}
+	return wruntime.OpenDirectoryDialog(ctx, wruntime.OpenDialogOptions{Title: "Add a repository to CodeDiver", CanCreateDirectories: false})
+}
+
+// Invoke calls an API method; args and result are JSON strings. Calls made
+// before startup completes use a background context.
 func (d *Desktop) Invoke(method, args string) (string, error) {
-	out, err := d.api.Invoke(d.ctx, method, json.RawMessage(args))
+	ctx := context.Background()
+	if p := d.ctx.Load(); p != nil {
+		ctx = *p
+	}
+	out, err := d.api.Invoke(ctx, method, json.RawMessage(args))
 	return string(out), err
 }
 
-// startup runs when the window is ready: it wires the native folder
-// picker and forwards bus events to the webview.
+// startup runs when the window is ready: it records the runtime context
+// and forwards bus events to the webview.
 func (d *Desktop) startup(ctx context.Context) {
-	d.ctx = ctx
-	d.api.PickDirectory = func() (string, error) {
-		return wruntime.OpenDirectoryDialog(ctx, wruntime.OpenDialogOptions{Title: "Add a repository to CodeDiver", CanCreateDirectories: false})
-	}
+	d.ctx.Store(&ctx)
+	close(d.ready)
 	ch, cancel := d.core.Bus.Subscribe()
 	go func() {
 		defer cancel()
@@ -57,7 +96,7 @@ func runGUI(port int, add string) error {
 	// The MCP server failing to bind (e.g. port in use) must not stop the UI;
 	// the status bar surfaces the error.
 	_ = a.server.Start()
-	desk := &Desktop{api: a.api, core: a.core}
+	desk := newDesktop(a.api, a.core)
 	bg := &options.RGBA{R: 11, G: 17, B: 32, A: 255} // Deep Dive --bg
 	return wails.Run(&options.App{
 		Title:            "CodeDiver",

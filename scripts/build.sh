@@ -58,6 +58,13 @@ LDFLAGS="-s -w -X main.version=$VERSION"
 # Numeric x.y.z for OS metadata (Info.plist, Windows resources, packages).
 NUMERIC=$(printf '%s' "${VERSION#v}" | sed -E 's/^([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
 printf '%s' "$NUMERIC" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || NUMERIC="0.0.0"
+# Package version: pre-releases use "~" so they sort before the final release
+# in apt and rpm (0.1.0~rc.2 < 0.1.0). Non-version builds fall back to 0.0.0.
+if printf '%s' "${VERSION#v}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.]+)?$'; then
+  PKGVER=$(printf '%s' "${VERSION#v}" | tr '-' '~')
+else
+  PKGVER="$NUMERIC"
+fi
 
 need go "https://go.dev/dl"
 need node "https://nodejs.org"
@@ -164,7 +171,7 @@ case "$OS" in
     say "dist/${BIN}_linux_${ARCH}.tar.gz"
     if command -v nfpm >/dev/null 2>&1; then
       for fmt in deb rpm; do
-        VERSION="$NUMERIC" ARCH="$ARCH" nfpm package -f packaging/nfpm.yaml -p "$fmt" -t "dist/${BIN}_linux_${ARCH}.$fmt" >/dev/null
+        VERSION="$PKGVER" ARCH="$ARCH" nfpm package -f packaging/nfpm.yaml -p "$fmt" -t "dist/${BIN}_linux_${ARCH}.$fmt" >/dev/null
         say "dist/${BIN}_linux_${ARCH}.$fmt"
       done
     else
