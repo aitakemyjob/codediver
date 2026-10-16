@@ -360,7 +360,7 @@ function AgentPanel() {
         {explanations.map((x) => (
           <div key={x.id} className="list-item" onClick={() => s.open({ kind: 'flow', title: x.sym?.qualified ?? 'Flow', params: { symbol: x.symbol } })}>
             <Workflow size={14} style={{ color: 'var(--accent)', marginTop: 2, flex: 'none' }} />
-            <div className="grow"><div className="title ellipsis mono">{x.sym?.qualified}</div><div className="sub ellipsis">{x.summary}</div></div>
+            <div className="grow"><div className="title ellipsis mono">{x.sym?.qualified}</div><div className="sub ellipsis">{x.summary.replace(/[*_`#>]/g, '')}</div></div>
           </div>
         ))}
         {diagrams.length > 0 && <div className="section-title"><Network size={12} /> Diagrams</div>}

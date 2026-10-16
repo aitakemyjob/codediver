@@ -50,11 +50,14 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
 /* ---------- App frame ---------- */
 .app {
   display: grid;
-  grid-template-rows: var(--titlebar-h) 1fr var(--statusbar-h);
+  grid-template-rows: var(--titlebar-h) minmax(0, 1fr) var(--statusbar-h);
+  /* minmax(0, …) keeps wide content (many tabs, long paths) from widening the window. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100vh;
+  overflow: hidden;
   background: var(--bg);
 }
-.workbench { display: flex; min-height: 0; }
+.workbench { display: flex; min-height: 0; min-width: 0; }
 .center { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg-1); border-left: 1px solid var(--border); }
 .center.with-inspector { border-right: 1px solid var(--border); }
 
@@ -66,6 +69,7 @@ input, textarea, select { font: inherit; color: inherit; user-select: text; }
   backdrop-filter: blur(12px);
   --wails-draggable: drag;
   position: relative; z-index: 20;
+  min-width: 0; overflow: hidden;
 }
 .titlebar.mac { padding-left: 84px; }
 .titlebar > * { --wails-draggable: no-drag; }

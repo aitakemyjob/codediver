@@ -631,7 +631,15 @@ func (s *Server) register() {
 		})
 
 	addTool(s, &mcp.Tool{Name: "git_diff", Description: "Diff summary (files, +/-, and which functions changed) or full patch. Defaults to working tree vs HEAD. Set show=true to open CodeDiver's visual review with heatmap and impact graph.", Annotations: readOnly("Git diff")},
-		func(a diffArgs) string { return strings.TrimSpace(a.Base + ".." + a.Head) }, func(ctx context.Context, a diffArgs) (string, error) {
+		func(a diffArgs) string {
+			if a.Base == "" && a.Head == "" {
+				if a.Staged {
+					return "staged"
+				}
+				return "working tree"
+			}
+			return a.Base + ".." + a.Head
+		}, func(ctx context.Context, a diffArgs) (string, error) {
 			rt, err := c.AgentRepo(a.Repo)
 			if err != nil {
 				return "", err
