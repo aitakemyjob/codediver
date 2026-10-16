@@ -10,7 +10,7 @@ description: |
   Visual code exploration desktop app with a built-in MCP server so coding
   agents can walk developers through code, diagrams and proposed changes.
 homepage: https://github.com/aitakemyjob/codediver
-license: TBD
+license: MIT
 depends:
   - libgtk-3-0
   - libwebkit2gtk-4.1-0

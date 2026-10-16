@@ -1,0 +1,80 @@
+name: Bug report
+description: Something in CodeDiver doesn't work as expected.
+labels: [bug, triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please search [existing issues](https://github.com/aitakemyjob/codediver/issues) first.
+        **Security problems:** please don't file them here — see [SECURITY.md](https://github.com/aitakemyjob/codediver/security/policy).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: "Opening Trace to here on a method in a large Go repo shows an empty graph..."
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Add a repository with ...
+        2. Open file ... and click ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: CodeDiver version
+      description: Run `codediver version`, or see the bottom-right of the status bar.
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Windows, Linux, Other]
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: How are you running it?
+      options: [Desktop app, "Browser (codediver serve)", MCP only (codediver mcp)]
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      multiple: true
+      options:
+        - Code view / file summary
+        - Graphs (call graph, trace, dependencies, types)
+        - Logic view (control flow)
+        - Heatmap
+        - Git review / history
+        - Agent / MCP tools
+        - Proposals
+        - Install / packaging
+        - Other
+  - type: input
+    id: agent
+    attributes:
+      label: Agent / MCP client (if relevant)
+      placeholder: Claude Code 2.x, Cursor, VS Code...
+  - type: input
+    id: languages
+    attributes:
+      label: Languages in the repository being explored
+      placeholder: Go, TypeScript
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Terminal output, browser console errors (for `serve`), or screenshots. Please remove anything private.
+      render: shell
