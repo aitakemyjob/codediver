@@ -1,4 +1,4 @@
-import { Bot, Files, Flame, GitCompare, LayoutDashboard, ListTree, Network, Search, Settings } from 'lucide-react';
+import { Bot, Files, FlaskConical, Flame, GitCompare, LayoutDashboard, ListTree, Network, Search, Settings } from 'lucide-react';
 import { useStore, type SidebarPanel } from '../lib/store';
 
 const panels: { id: SidebarPanel; icon: typeof Files; label: string }[] = [
@@ -39,6 +39,10 @@ export function ActivityBar() {
           </button>
           <button className="ab-btn" title="Heatmap (Ctrl+Shift+H)" onClick={() => s.open({ kind: 'heatmap', title: 'Heatmap', params: {} })}>
             <Flame size={19} strokeWidth={1.8} />
+          </button>
+          <button className="ab-btn" title="QA: tests & coverage" onClick={() => s.open({ kind: 'qa', title: 'QA', params: {} })}>
+            <FlaskConical size={19} strokeWidth={1.8} />
+            {s.qaRun?.state === 'running' && <span className="count run" aria-label="coverage running" />}
           </button>
           <button className="ab-btn" title="Dependencies (Ctrl+Shift+D)" onClick={() => s.open({ kind: 'graph', title: 'Dependencies', params: { kind: 'deps' } })}>
             <Network size={19} strokeWidth={1.8} />

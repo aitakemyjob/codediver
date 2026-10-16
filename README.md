@@ -17,8 +17,9 @@
 
 CodeDiver is a desktop app that turns a repository into things you can *see*:
 call graphs, "how does execution get here?" traces, control-flow graphs of a
-single function with its inputs and outputs, dependency maps, type diagrams
-and heatmaps of churn, complexity and change. It ships a built-in
+single function with its inputs and outputs, dependency maps, type diagrams,
+heatmaps of churn, complexity and change, and a QA view of what your tests
+actually cover. It ships a built-in
 [MCP](https://modelcontextprotocol.io) server, so Claude Code, Cursor, VS Code
 and other agents can drive the UI while they explain code to you — and
 propose changes you review visually before anything touches disk.
@@ -31,7 +32,8 @@ propose changes you review visually before anything touches disk.
 | **Function logic** | Control-flow graph with branches, loops, early returns, `defer`/`go` and panics, plus an inputs → function → outputs card. Agents pin step-by-step narration onto the matching blocks. |
 | **File summary** | One click lists every function (inputs → outputs, complexity, callers/callees), type, variable, constant and import in the open file. |
 | **Call graphs** | Callers, callees or both; interface calls resolved to their concrete implementations. |
-| **Heatmaps** | Treemap of the repo by churn, working-tree diff, pending agent proposals, complexity, agent attention or size, with per-function drill-down. |
+| **QA view** | Line coverage from your own test tooling (Go, LCOV, Cobertura, JaCoCo), every test as a readable behavior with the code it exercises, functions ranked by test risk with the hard-wired dependencies that make them hard to test, and coverage markers in the editor gutter. Agents read it over MCP and post test plans you review. |
+| **Heatmaps** | Treemap of the repo by churn, working-tree diff, pending agent proposals, complexity, agent attention, size or uncovered lines, with per-function drill-down. |
 | **Visual review** | Git diffs (working tree, staged, any two refs) mapped to the functions they touch, plus a blast-radius graph of affected callers. |
 | **Agent proposals** | Agents submit edits; you get side-by-side diffs, a heatmap and an impact graph, then accept or reject per file with feedback. |
 | **Walkthroughs & diagrams** | Agents present guided code tours and Mermaid or interactive diagrams whose nodes link to code. |
@@ -92,8 +94,12 @@ notarized; the install script clears the quarantine flag for you.
    ```
 
 3. Ask things like *"Using CodeDiver, walk me through how an order request is
-   handled"* or *"explain the function I have open"*. With **Follow agent** on,
+   handled"*, *"explain the function I have open"* or *"what's the riskiest
+   untested code here? Show me a test plan."* With **Follow agent** on,
    whatever the agent shows opens in front of you.
+4. Open **QA** (flask icon) and click **Run coverage** to add line coverage;
+   CodeDiver detects the command for Go, Vitest/Jest, pytest, Cargo, Maven,
+   Gradle and .NET projects, or imports a report you already have.
 
 Shortcuts: `Ctrl/⌘ K` palette · `Alt+T` trace to here · `Alt+L` logic flow ·
 `Alt+G` call graph · `Alt+S` file summary · `Ctrl/⌘ Shift H` heatmap ·
@@ -117,6 +123,9 @@ codediver version
   your own per-repo globs are invisible.
 - Agents cannot write files. `propose_changes` stores a proposal; only you can
   apply it, and CodeDiver refuses to overwrite a file that changed since.
+- Agents cannot run commands. Coverage suites (detected from `go.mod`,
+  `package.json`, `pyproject.toml`, … and editable in the QA view) run only
+  when you click **Run coverage**; agents only read the results.
 - The server binds to `127.0.0.1`, rejects non-loopback `Host` headers (DNS
   rebinding) and requires a custom header plus same-origin for the UI API.
 

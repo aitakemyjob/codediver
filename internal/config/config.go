@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aitakemyjob/codediver/internal/qa"
 )
 
 const DefaultMCPPort = 47474
@@ -30,6 +32,9 @@ type Repo struct {
 	// Exclude lists extra glob patterns (matched against the base name and the
 	// repo-relative path) that are invisible to the agent.
 	Exclude []string `json:"exclude"`
+	// Suites are the developer's coverage commands. Nil means "use the
+	// detected defaults"; only the UI can change them.
+	Suites []qa.Suite `json:"suites,omitempty"`
 }
 
 type Settings struct {
@@ -226,6 +231,20 @@ func (s *Store) UpdateRepo(r Repo) error {
 		}
 	}
 	return fmt.Errorf("unknown repo %q", r.ID)
+}
+
+// SetSuites saves a repository's coverage suites. Commands are run by the
+// developer from the UI, so this is never reachable from agents.
+func (s *Store) SetSuites(id string, suites []qa.Suite) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.cfg.Repos {
+		if s.cfg.Repos[i].ID == id {
+			s.cfg.Repos[i].Suites = suites
+			return s.saveLocked()
+		}
+	}
+	return fmt.Errorf("unknown repo %q", id)
 }
 
 // SetActive marks the repository the UI and agents default to.

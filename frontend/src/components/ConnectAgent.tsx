@@ -58,6 +58,7 @@ export function ConnectAgent() {
           <li>“Using CodeDiver, walk me through how a request flows from main to the database.”</li>
           <li>“Explain the function I have open in CodeDiver — inputs, outputs and logic.”</li>
           <li>“Show me a heatmap of what my current diff touches and who calls it.”</li>
+          <li>“What isn't tested in this repo? Show me a test plan for the riskiest gap.”</li>
           <li>“Propose a fix for this bug through CodeDiver so I can review it visually.”</li>
         </ul>
       </div>

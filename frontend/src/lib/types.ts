@@ -481,3 +481,180 @@ export interface SessionData {
   explanations: Explanation[];
   annotations: Annotation[];
 }
+
+// ---- QA ----------------------------------------------------------------
+
+export interface TestSuite {
+  id: string;
+  name: string;
+  dir: string;
+  command: string;
+  report: string;
+  tool: string;
+  enabled: boolean;
+}
+
+export interface TestCase {
+  id: string;
+  name: string;
+  behavior: string;
+  kind: 'test' | 'subtest' | 'case' | 'suite' | 'benchmark' | 'fuzz' | 'example' | 'todo';
+  framework: string;
+  file: string;
+  line: number;
+  endLine: number;
+  parent?: string;
+  suite?: string[];
+  skipped?: boolean;
+  targets?: string[];
+}
+
+export interface TestabilityHint {
+  kind: string;
+  line?: number;
+  match?: string;
+  problem: string;
+  suggestion: string;
+}
+
+export interface FuncQA {
+  id: string;
+  name: string;
+  kind: string;
+  file: string;
+  line: number;
+  endLine: number;
+  complexity: number;
+  callers: number;
+  exported: boolean;
+  covered: number;
+  lines: number;
+  /** -1 when there is no coverage data for the function. */
+  pct: number;
+  tests?: string[];
+  direct: number;
+  indirect: number;
+  risk: number;
+  reason?: string;
+  uncovered?: string;
+  hints?: TestabilityHint[];
+  heuristic?: boolean;
+}
+
+export interface CoverageSource {
+  path: string;
+  format: string;
+  suite?: string;
+  files: number;
+  skipped?: number;
+  modTime: string;
+}
+
+export interface CoverageSummary {
+  covered: number;
+  lines: number;
+  pct: number;
+  generated: string;
+  sources: CoverageSource[];
+  stale: number;
+}
+
+export interface FileQA {
+  path: string;
+  covered: number;
+  lines: number;
+  pct: number;
+  functions: number;
+  untested: number;
+  stale?: boolean;
+}
+
+export interface SuiteResult {
+  id: string;
+  name: string;
+  state: 'pending' | 'running' | 'passed' | 'failed' | 'error' | 'cancelled';
+  exitCode: number;
+  failures?: string[];
+  report?: string;
+  files: number;
+  error?: string;
+  durationMs: number;
+}
+
+export interface QARun {
+  id: string;
+  repo: string;
+  state: 'running' | 'done' | 'failed' | 'error' | 'cancelled';
+  started: string;
+  finished?: string;
+  suites: SuiteResult[];
+  log: string[] | null;
+}
+
+export interface PlannedBehavior {
+  name: string;
+  kind?: string;
+  given?: string;
+  when?: string;
+  then?: string;
+  line?: number;
+  end_line?: number;
+  existing?: string;
+}
+
+export interface TestRefactor {
+  title: string;
+  detail?: string;
+  file?: string;
+  line?: number;
+  end_line?: number;
+}
+
+export interface TestPlan {
+  id: string;
+  repo: string;
+  title: string;
+  summary?: string;
+  symbol?: string;
+  symbolName?: string;
+  file?: string;
+  line?: number;
+  endLine?: number;
+  testFile?: string;
+  behaviors: PlannedBehavior[];
+  refactors?: TestRefactor[];
+  created: string;
+}
+
+export interface QAOverview {
+  coverage?: CoverageSummary;
+  tests: { files: number; tests: number; behaviors: number; suites: number; skipped: number; frameworks: Record<string, number> };
+  functions: { total: number; covered: number; full: number; uncovered: number; tested: number; reached: number };
+  files: FileQA[];
+  testFiles: { path: string; framework: string; tests: TestCase[] }[];
+  gaps: FuncQA[];
+  suites: TestSuite[];
+  detected: boolean;
+  run?: QARun;
+  plans: TestPlan[];
+  targets: Record<string, { name: string; file: string; line: number }>;
+}
+
+export interface FileCoverage {
+  path: string;
+  available: boolean;
+  covered: number[];
+  uncovered: number[];
+  partial: number[];
+  pct: number;
+  stale?: boolean;
+  generated?: string;
+  functions: FuncQA[];
+  tests?: TestCase[];
+}
+
+export interface SymbolTests {
+  function: FuncQA;
+  direct: TestCase[];
+  indirect: TestCase[];
+}

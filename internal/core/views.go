@@ -430,6 +430,7 @@ var HeatMetrics = map[string]string{
 	"complexity": "Total cyclomatic complexity",
 	"agent":      "Agent attention this session",
 	"size":       "Lines of code",
+	"coverage":   "Lines not covered by tests",
 }
 
 var treeCache sync.Map // repo id -> cachedTree
@@ -539,6 +540,29 @@ func (s *Service) Heatmap(ctx context.Context, rt *RepoHandle, metric, proposalI
 		for file, n := range s.session.attention(rt.cfg.ID) {
 			hm.Values[file] = float64(n)
 			hm.Details[file] = fmt.Sprintf("agent looked here %d×", n)
+		}
+	case "coverage":
+		report, _ := s.coverage(rt)
+		if report == nil {
+			break
+		}
+		for p, fc := range report.Files {
+			c, t := fc.Counts()
+			if t == 0 {
+				continue
+			}
+			hm.Values[p] = float64(t - c)
+			hm.Details[p] = fmt.Sprintf("%.0f%% covered · %d of %d lines not run by tests", 100*float64(c)/float64(t), t-c, t)
+			if ix != nil {
+				for _, sym := range ix.SymbolsInFile(p) {
+					if !sym.Kind.IsCallable() {
+						continue
+					}
+					if cv, tot := fc.CountsIn(sym.Line, sym.EndLine); tot > cv {
+						addSym(p, sym, float64(tot-cv))
+					}
+				}
+			}
 		}
 	case "size":
 		var walk func(n *workspace.TreeNode)
