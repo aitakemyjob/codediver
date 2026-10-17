@@ -15,8 +15,6 @@ import (
 	"github.com/aitakemyjob/codediver/internal/workspace"
 )
 
-const repoDesc = "repository name or id; defaults to the repo open in CodeDiver"
-
 type noArgs struct{}
 
 type repoArgs struct {

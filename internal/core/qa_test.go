@@ -35,7 +35,7 @@ func qaRepo(t *testing.T) (*Service, *RepoHandle, string) {
 	s.CacheDir = t.TempDir()
 	write := func(name, body string) {
 		p := filepath.Join(dir, filepath.FromSlash(name))
-		os.MkdirAll(filepath.Dir(p), 0o755)
+		testutil.Must(t, os.MkdirAll(filepath.Dir(p), 0o755))
 		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
@@ -151,7 +151,7 @@ func TestQAFileCoverageAndHeatmap(t *testing.T) {
 	}
 	// Editing a file after the report marks it stale.
 	future := time.Now().Add(time.Hour)
-	os.Chtimes(filepath.Join(dir, "api", "api.go"), future, future)
+	testutil.Must(t, os.Chtimes(filepath.Join(dir, "api", "api.go"), future, future))
 	if fc, _ := s.FileCoverage(ctx, rt, "api/api.go"); !fc.Stale {
 		t.Error("expected stale coverage")
 	}
@@ -215,9 +215,11 @@ func TestQARunReportsMissingReport(t *testing.T) {
 		t.Skip("suite command uses sh")
 	}
 	s, rt, _ := qaRepo(t)
-	s.SaveQASuites(rt, []qa.Suite{{ID: "x", Name: "Broken", Enabled: true, Command: "exit 1", Report: "{out}/none.info"}})
+	testutil.Must(t, s.SaveQASuites(rt, []qa.Suite{{ID: "x", Name: "Broken", Enabled: true, Command: "exit 1", Report: "{out}/none.info"}}))
 	rt, _ = s.Repo(rt.ID())
-	s.RunCoverage(rt, nil)
+	if _, err := s.RunCoverage(rt, nil); err != nil {
+		t.Fatal(err)
+	}
 	for s.LastRun(rt).State == "running" {
 		time.Sleep(20 * time.Millisecond)
 	}

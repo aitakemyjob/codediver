@@ -305,9 +305,7 @@ func (ix *Index) CallGraph(id string, o CallGraphOptions) *Graph {
 				cand = append(cand, ix.Callees(cur)...)
 			}
 			if o.Direction != "callees" {
-				for _, e := range ix.Callers(cur) {
-					cand = append(cand, e)
-				}
+				cand = append(cand, ix.Callers(cur)...)
 			}
 			for _, e := range cand {
 				if !ix.edgeAllowed(e, o) {
@@ -523,7 +521,7 @@ func (ix *Index) PackageGraph(includeExternal bool, focus string) *Graph {
 		g.Nodes = append(g.Nodes, n)
 	}
 	for _, e := range ix.PkgEdges {
-		if focus != "" && !(keep[e.From] && keep[e.To]) {
+		if focus != "" && (!keep[e.From] || !keep[e.To]) {
 			continue
 		}
 		key := e.From + "→" + e.To

@@ -220,7 +220,7 @@ function SearchPanel() {
           </div>
         ))}
         {results.symbols?.map((sym) => (
-          <div key={sym.id} className="tree-row" onClick={() => { sym.file && openFile(sym.file, sym.line, sym.endLine); s.inspectSymbol(sym.id); }}>
+          <div key={sym.id} className="tree-row" onClick={() => { if (sym.file) openFile(sym.file, sym.line, sym.endLine); s.inspectSymbol(sym.id); }}>
             <KindIcon kind={sym.kind} size={18} />
             <span className="name mono">{sym.qualified}</span>
             <span className="tag faint ellipsis" style={{ maxWidth: 110 }}>{sym.file}</span>

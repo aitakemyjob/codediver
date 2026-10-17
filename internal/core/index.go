@@ -2,7 +2,7 @@ package core
 
 import (
 	"context"
-	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/binary"
 	"encoding/hex"
 	"os"
@@ -25,7 +25,7 @@ type indexCache struct {
 
 // fingerprint hashes the names, sizes and mtimes of analyzable files.
 func fingerprint(root string, files []string) string {
-	h := sha1.New()
+	h := sha256.New()
 	var buf [16]byte
 	for _, f := range files {
 		if !workspace.IsCode(workspace.Language(f)) {
@@ -36,8 +36,8 @@ func fingerprint(root string, files []string) string {
 			continue
 		}
 		h.Write([]byte(f))
-		binary.LittleEndian.PutUint64(buf[:8], uint64(st.Size()))
-		binary.LittleEndian.PutUint64(buf[8:], uint64(st.ModTime().UnixNano()))
+		binary.LittleEndian.PutUint64(buf[:8], uint64(st.Size()))               //nolint:gosec // bit pattern only, for hashing
+		binary.LittleEndian.PutUint64(buf[8:], uint64(st.ModTime().UnixNano())) //nolint:gosec // bit pattern only, for hashing
 		h.Write(buf[:])
 	}
 	return hex.EncodeToString(h.Sum(nil))

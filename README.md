@@ -13,6 +13,7 @@
   <a href="https://github.com/aitakemyjob/codediver/releases/latest"><img src="https://img.shields.io/github/v/release/aitakemyjob/codediver?sort=semver" alt="Latest release" /></a>
   <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-4fc3f7" alt="Platforms" />
   <a href="LICENSE"><img src="https://img.shields.io/github/license/aitakemyjob/codediver" alt="MIT license" /></a>
+  <a href="https://scorecard.dev/viewer/?uri=github.com/aitakemyjob/codediver"><img src="https://api.scorecard.dev/projects/github.com/aitakemyjob/codediver/badge" alt="OpenSSF Scorecard" /></a>
 </p>
 
 CodeDiver is a desktop app that turns a repository into things you can *see*:
@@ -73,6 +74,16 @@ Or grab a file from [Releases](https://github.com/aitakemyjob/codediver/releases
 Linux needs WebKitGTK 4.1 (`sudo apt install libwebkit2gtk-4.1-0`), and every
 platform needs `git` on `PATH` for history features. macOS builds are not yet
 notarized; the install script clears the quarantine flag for you.
+
+**Verifying a download:** every file is listed in `checksums.txt`, and each
+release carries signed build provenance, so you can confirm a file was built
+by this repository's release workflow:
+
+```sh
+gh attestation verify codediver_linux_amd64.deb --repo aitakemyjob/codediver
+```
+
+Each release also includes an SPDX SBOM listing every Go and npm dependency.
 
 ## Quick start
 
@@ -163,7 +174,10 @@ That runs the tests, then creates and pushes an annotated tag. The
 [Release workflow](.github/workflows/release.yml) then verifies the tag,
 re-runs the tests, builds every platform with the same scripts as above
 (Linux amd64/arm64, macOS universal, Windows, plus headless binaries),
-writes `checksums.txt` and publishes a GitHub release. Tags with a suffix like
+writes `checksums.txt`, an SPDX SBOM and signed build provenance, and publishes
+a GitHub release whose notes are grouped by PR label
+([`.github/release.yml`](.github/release.yml)). Update
+[CHANGELOG.md](CHANGELOG.md) before tagging. Tags with a suffix like
 `v1.0.0-rc.1` become pre-releases. To sign and notarize macOS builds, add the
 `MACOS_CODESIGN_IDENTITY`, `APPLE_ID`, `APPLE_TEAM_ID` and
 `APPLE_APP_PASSWORD` repository secrets.
@@ -181,6 +195,8 @@ reports to [SECURITY.md](SECURITY.md).
 - [Architecture](docs/ARCHITECTURE.md) — packages, design principles, how to extend
 - [MCP tool reference](docs/MCP.md) — every tool agents can call
 - [Contributing](CONTRIBUTING.md) — setup, conventions, branding and releases
+- [Roadmap](ROADMAP.md) — what's planned for 0.2, 0.3, 0.4 and 1.0
+- [Changelog](CHANGELOG.md) — notable changes per release
 
 ## License
 

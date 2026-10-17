@@ -163,7 +163,7 @@ func TestGitTools(t *testing.T) {
 	}
 	p := filepath.Join(h.dir, "store", "store.go")
 	data, _ := os.ReadFile(p)
-	os.WriteFile(p, []byte(strings.Replace(string(data), "m.orders[o.ID] = o", "m.orders[o.ID] = o // saved", 1)), 0o644)
+	testutil.Must(t, os.WriteFile(p, []byte(strings.Replace(string(data), "m.orders[o.ID] = o", "m.orders[o.ID] = o // saved", 1)), 0o644))
 	h.mustCall("git_diff", map[string]any{"show": true}, "modified store/store.go +1 −1", "~ Memory.Save", "Potentially affected callers")
 	if ev := h.waitFor(core.EvFocus); ev.Data.(core.Focus).View != "diff" {
 		t.Errorf("focus = %+v", ev.Data)
@@ -263,7 +263,7 @@ func TestAccessSwitches(t *testing.T) {
 	}
 	st := h.core.Config.Get().Settings
 	st.MCPEnabled = false
-	h.core.UpdateSettings(st)
+	testutil.Must(t, h.core.UpdateSettings(st))
 	if out, isErr := h.call("list_repos", nil); !isErr || !strings.Contains(out, "disabled") {
 		t.Errorf("disabled agent access should be refused: %s", out)
 	}

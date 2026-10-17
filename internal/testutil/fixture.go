@@ -143,3 +143,11 @@ func Git(t testing.TB, dir string, args ...string) {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 }
+
+// Must fails the test immediately when a setup step returns an error.
+func Must(tb testing.TB, err error) {
+	tb.Helper()
+	if err != nil {
+		tb.Fatal(err)
+	}
+}

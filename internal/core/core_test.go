@@ -64,7 +64,7 @@ func TestIndexCacheInvalidatesOnChange(t *testing.T) {
 	if ix1 != ix2 {
 		t.Fatal("index should be cached")
 	}
-	os.WriteFile(filepath.Join(dir, "api", "extra.go"), []byte("package api\n\nfunc Extra() {}\n"), 0o644)
+	testutil.Must(t, os.WriteFile(filepath.Join(dir, "api", "extra.go"), []byte("package api\n\nfunc Extra() {}\n"), 0o644))
 	rt.idx.checkedAt = rt.idx.checkedAt.Add(-1e10) // skip the 2s debounce
 	rt.ws.Invalidate()
 	ix3, _ := s.Index(ctx, rt)
@@ -78,7 +78,7 @@ func TestDiffMapsSymbolsAndImpact(t *testing.T) {
 	s, rt, dir := newService(t)
 	p := filepath.Join(dir, "api", "api.go")
 	data, _ := os.ReadFile(p)
-	os.WriteFile(p, []byte(strings.Replace(string(data), "o.Qty <= 0", "o.Qty < 1", 1)), 0o644)
+	testutil.Must(t, os.WriteFile(p, []byte(strings.Replace(string(data), "o.Qty <= 0", "o.Qty < 1", 1)), 0o644))
 	ov, err := s.Diff(context.Background(), rt, gitx.DiffSpec{}, true)
 	if err != nil {
 		t.Fatal(err)
@@ -94,7 +94,7 @@ func TestDiffMapsSymbolsAndImpact(t *testing.T) {
 		t.Errorf("impact should include the caller: %+v", ov.Impact.Nodes)
 	}
 	// Files without symbols (untracked, non-code) must serialize symbols as [].
-	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello\n"), 0o644)
+	testutil.Must(t, os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello\n"), 0o644))
 	ov2, err := s.Diff(context.Background(), rt, gitx.DiffSpec{}, false)
 	if err != nil {
 		t.Fatal(err)

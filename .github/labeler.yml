@@ -1,0 +1,31 @@
+# Path rules for actions/labeler (see workflows/labeler.yml).
+go:
+  - changed-files:
+      - any-glob-to-any-file: ['**/*.go', 'go.mod', 'go.sum']
+frontend:
+  - changed-files:
+      - any-glob-to-any-file: ['frontend/**']
+documentation:
+  - changed-files:
+      - any-glob-to-any-file: ['docs/**', '**/*.md']
+ci:
+  - changed-files:
+      - any-glob-to-any-file: ['.github/**', 'scripts/**', 'Makefile']
+"area: mcp":
+  - changed-files:
+      - any-glob-to-any-file: ['internal/mcpserver/**', 'bridge.go']
+"area: qa":
+  - changed-files:
+      - any-glob-to-any-file: ['internal/qa/**', 'internal/core/qa*.go', 'frontend/src/views/qa/**']
+"area: graphs":
+  - changed-files:
+      - any-glob-to-any-file: ['internal/analysis/**', 'frontend/src/graph/**', 'frontend/src/views/GraphView.tsx', 'frontend/src/views/FlowView.tsx']
+"area: heatmap":
+  - changed-files:
+      - any-glob-to-any-file: ['frontend/src/views/HeatmapView.tsx', 'frontend/src/lib/treemap.ts']
+"area: review":
+  - changed-files:
+      - any-glob-to-any-file: ['internal/proposals/**', 'internal/gitx/**', 'frontend/src/views/DiffView.tsx', 'frontend/src/views/ProposalView.tsx']
+"area: packaging":
+  - changed-files:
+      - any-glob-to-any-file: ['packaging/**', 'build/**', 'scripts/build.*', 'scripts/install.*']

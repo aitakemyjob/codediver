@@ -59,7 +59,7 @@ export default function DiffView({ tab }: ViewProps) {
   useEffect(() => {
     if (tab.params.select) setSelected(tab.params.select as string);
   }, [tab.params.select]);
-  const files = ov.data?.files ?? [];
+  const files = useMemo(() => ov.data?.files ?? [], [ov.data]);
   const current = files.find((f) => f.path === selected) ?? files[0];
   const versions = useAsync(
     () => (current ? api.versions(s.repoId, current.path, current.oldPath, spec) : Promise.resolve(undefined)),

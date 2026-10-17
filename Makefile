@@ -7,19 +7,23 @@
 
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 WAILS_VERSION := v2.16.0
+GOLANGCI_VERSION := v2.5.0
+GOLANGCI ?= $(shell go env GOPATH)/bin/golangci-lint
 WAILS ?= $(shell go env GOPATH)/bin/wails
 LOGO ?= cd_logo_1.png
 ifeq ($(shell uname -s),Linux)
   WAILS_TAGS := -tags webkit2_41
 endif
 
-.PHONY: help tools deps frontend test test-go test-frontend vet lint build package headless headless-all serve dev icon release clean
+.PHONY: help tools deps frontend test test-go test-frontend vet lint vuln build package headless headless-all serve dev icon release clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
 
-tools: ## Install the Wails CLI
+tools: ## Install the Wails CLI, golangci-lint and govulncheck
 	go install github.com/wailsapp/wails/v2/cmd/wails@$(WAILS_VERSION)
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_VERSION)
+	go install golang.org/x/vuln/cmd/govulncheck@latest
 
 deps: ## Install frontend dependencies
 	cd frontend && npm ci
@@ -38,8 +42,13 @@ test-frontend: ## Frontend type check and unit tests
 vet: ## go vet
 	go vet -tags nogui ./...
 
-lint: vet ## vet + gofmt check
-	@test -z "$$(gofmt -l $$(find . -name '*.go' -not -path './frontend/*'))" || (gofmt -l $$(find . -name '*.go' -not -path './frontend/*'); echo "run gofmt -w"; exit 1)
+lint: ## golangci-lint (Go) and ESLint (frontend)
+	$(GOLANGCI) run ./...
+	cd frontend && npm run lint
+
+vuln: ## Known-vulnerability scan: govulncheck and npm audit
+	$(shell go env GOPATH)/bin/govulncheck -tags nogui ./...
+	cd frontend && npm audit --omit=dev --audit-level=high
 
 build: ## Desktop app for this machine → build/bin
 	scripts/build.sh --version $(VERSION)

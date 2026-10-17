@@ -1,0 +1,46 @@
+# golangci-lint v2 configuration. Run locally with `make lint`.
+version: "2"
+
+run:
+  build-tags: [nogui]
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - misspell
+    - bodyclose
+    - gosec
+  settings:
+    errcheck:
+      # Errors from these are either impossible or not actionable: closing
+      # read-only files, writing an HTTP response the client already
+      # abandoned, draining a pipe.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - (*io.PipeWriter).Close
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - (*encoding/json.Encoder).Encode
+        - io.Copy
+        - (*flag.FlagSet).Parse
+        - (github.com/modelcontextprotocol/go-sdk/mcp.Connection).Close
+        - (*github.com/modelcontextprotocol/go-sdk/mcp.ClientSession).Close
+    gosec:
+      excludes:
+        - G104 # duplicates errcheck, which has the exclusions above
+        - G204 # running git and developer-configured test commands is the point
+        - G304 # file paths are validated by the workspace sandbox
+        - G306 # config and cache files are not secrets
+        - G301 # cache directories are user-owned
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [gosec, bodyclose]
+      - path: scripts/
+        linters: [gosec]
+
+formatters:
+  enable:
+    - gofmt

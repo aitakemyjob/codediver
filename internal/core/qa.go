@@ -1124,10 +1124,10 @@ func (s *Service) QAOverview(ctx context.Context, rt *RepoHandle, gapLimit int) 
 			order = append(order, tc.File)
 		}
 		tf.Tests = append(tf.Tests, tc)
-		switch {
-		case tc.Kind == qa.KindSuite:
+		switch tc.Kind {
+		case qa.KindSuite:
 			ov.Tests.Suites++
-		case tc.Kind == qa.KindCase || tc.Kind == qa.KindSubtest || tc.Kind == qa.KindTodo:
+		case qa.KindCase, qa.KindSubtest, qa.KindTodo:
 			ov.Tests.Behaviors++
 		default:
 			ov.Tests.Tests++
