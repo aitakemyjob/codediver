@@ -52,7 +52,10 @@ func invoke(t *testing.T, ts *httptest.Server, method string, args any, header b
 	}
 	defer resp.Body.Close()
 	var out map[string]json.RawMessage
-	json.NewDecoder(resp.Body).Decode(&out)
+	// Refusals (403) are plain text; only successful calls must be JSON.
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil && resp.StatusCode == http.StatusOK {
+		t.Fatal(err)
+	}
 	return resp, out
 }
 
@@ -129,7 +132,9 @@ func TestEventsStream(t *testing.T) {
 	}
 	defer resp.Body.Close()
 	r := bufio.NewReader(resp.Body)
-	r.ReadString('\n') // ": connected"
+	if _, err := r.ReadString('\n'); err != nil { // ": connected"
+		t.Fatal(err)
+	}
 	go func() {
 		time.Sleep(50 * time.Millisecond)
 		svc.Show(core.Focus{View: "code", Repo: "x"})

@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/aitakemyjob/codediver/internal/testutil"
 )
 
 func TestParseGoProfileMergesBlocksAcrossBinaries(t *testing.T) {
@@ -399,8 +401,8 @@ func TestExpandAndFindReport(t *testing.T) {
 		t.Fatal("quoted expand")
 	}
 	nested := filepath.Join(dir, "guid", "coverage.cobertura.xml")
-	os.MkdirAll(filepath.Dir(nested), 0o755)
-	os.WriteFile(nested, []byte("<coverage/>"), 0o644)
+	testutil.Must(t, os.MkdirAll(filepath.Dir(nested), 0o755))
+	testutil.Must(t, os.WriteFile(nested, []byte("<coverage/>"), 0o644))
 	if got, err := FindReport(filepath.Join(dir, "*", "coverage.cobertura.xml")); err != nil || got != nested {
 		t.Fatalf("FindReport = %q %v", got, err)
 	}

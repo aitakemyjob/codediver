@@ -156,7 +156,10 @@ func (w *Workspace) Search(opts SearchOptions, defaults []string) ([]SearchMatch
 			fh.Close()
 			continue
 		}
-		fh.Seek(0, 0)
+		if _, err := fh.Seek(0, 0); err != nil {
+			fh.Close()
+			continue
+		}
 		sc := bufio.NewScanner(fh)
 		sc.Buffer(make([]byte, 64*1024), 1<<20)
 		line := 0

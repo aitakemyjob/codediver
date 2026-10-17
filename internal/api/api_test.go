@@ -50,7 +50,7 @@ func TestAllMethodsSmoke(t *testing.T) {
 					t.Errorf("%s panicked: %v", m, r)
 				}
 			}()
-			a.Invoke(context.Background(), m, nil)
+			_, _ = a.Invoke(context.Background(), m, nil) // errors are fine; panics are not
 		}()
 	}
 }

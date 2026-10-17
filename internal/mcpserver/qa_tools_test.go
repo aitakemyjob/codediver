@@ -88,7 +88,7 @@ func TestQAToolsRespectAgentSwitch(t *testing.T) {
 	withTests(t, h, true)
 	r := h.repo
 	r.MCPEnabled = false
-	h.core.UpdateRepo(r)
+	testutil.Must(t, h.core.UpdateRepo(r))
 	for _, tool := range []string{"get_test_overview", "get_coverage", "find_test_gaps"} {
 		if out, isErr := h.call(tool, nil); !isErr {
 			t.Errorf("%s should be refused when the repo is hidden from agents: %s", tool, out)

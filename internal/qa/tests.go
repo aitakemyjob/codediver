@@ -427,7 +427,7 @@ func (d *discoverer) annotated(marker, decl *regexp.Regexp, framework string) {
 		style = rustSyntax
 	}
 	type cls struct {
-		id, name   string
+		name       string
 		start, end int
 	}
 	var classes []cls
@@ -622,7 +622,9 @@ func matchClose(src string, open int, st syntax) int {
 			}
 		case strings.IndexByte(st.quotes, c) >= 0:
 			if c == '\'' && st.lifetimes {
-				if !(i+2 < len(src) && (src[i+2] == '\'' || (src[i+1] == '\\' && i+3 < len(src) && strings.IndexByte(src[i+2:min(i+12, len(src))], '\'') >= 0))) {
+				// 'a' or '\n' is a char literal; anything else is a lifetime ('a).
+				charLit := i+2 < len(src) && (src[i+2] == '\'' || (src[i+1] == '\\' && i+3 < len(src) && strings.IndexByte(src[i+2:min(i+12, len(src))], '\'') >= 0))
+				if !charLit {
 					continue
 				}
 			}

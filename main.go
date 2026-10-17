@@ -72,7 +72,9 @@ func bootstrap(port int, addPath string, withUI bool) (*app, error) {
 		if err != nil {
 			return nil, fmt.Errorf("add %s: %w", addPath, err)
 		}
-		svc.SetActiveRepo(r.ID)
+		if err := svc.SetActiveRepo(r.ID); err != nil {
+			return nil, fmt.Errorf("select %s: %w", addPath, err)
+		}
 	}
 	if port == 0 {
 		port = store.Get().Settings.MCPPort

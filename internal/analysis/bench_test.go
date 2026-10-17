@@ -17,7 +17,7 @@ func BenchmarkBuildRealRepo(b *testing.B) {
 		b.Skip("set CODEDIVER_BENCH_DIR")
 	}
 	var files []string
-	filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}

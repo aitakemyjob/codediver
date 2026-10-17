@@ -39,13 +39,13 @@ jobs:
           if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::Tag '$TAG' is not a version like v1.2.3 or v1.2.3-rc.1"; exit 1
           fi
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ env.TAG }}
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: ${{ env.GO_VERSION }}
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -66,13 +66,13 @@ jobs:
           - { name: macos-universal, os: macos-latest, platform: darwin/universal }
           - { name: windows-amd64, os: windows-latest, arch: amd64 }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ env.TAG }}
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: ${{ env.GO_VERSION }}
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
@@ -102,7 +102,7 @@ jobs:
         shell: pwsh
         run: scripts/build.ps1 -Arch ${{ matrix.arch }} -Version $env:TAG -Package
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist-${{ matrix.name }}
           path: dist/*
@@ -113,19 +113,19 @@ jobs:
     needs: verify
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           ref: ${{ env.TAG }}
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: ${{ env.GO_VERSION }}
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: scripts/build.sh --headless --version "$TAG" --package
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dist-headless
           path: dist/*
@@ -135,14 +135,31 @@ jobs:
     name: Publish release
     needs: [desktop, headless]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write     # sign build provenance attestations
+      attestations: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: dist-*
           merge-multiple: true
           path: dist
+      - name: SBOM (SPDX) of Go and npm dependencies
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/codediver_${{ env.TAG }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
       - name: Checksums
         run: cd dist && sha256sum * > checksums.txt && cat checksums.txt
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: dist/*
       - name: Release notes header
         run: |
           cat > notes.md <<EOF
@@ -160,9 +177,15 @@ jobs:
           | Linux ARM64 | \`codediver_linux_arm64.*\` |
           | Headless server (\`codediver serve\`) | \`codediver-headless_<os>_<arch>.*\` |
 
-          Verify downloads against \`checksums.txt\`.
+          Verify downloads against \`checksums.txt\`, and check that a file was built by this repository's release workflow with:
+
+          \`\`\`sh
+          gh attestation verify <file> --repo ${GITHUB_REPOSITORY}
+          \`\`\`
+
+          The SBOM (\`codediver_${TAG}.spdx.json\`) lists every Go and npm dependency in this release.
           EOF
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           tag_name: ${{ env.TAG }}
           name: CodeDiver ${{ env.TAG }}

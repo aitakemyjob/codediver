@@ -3,7 +3,7 @@
 package config
 
 import (
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // repo IDs, not security; changing the hash would orphan saved repos
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -150,7 +150,7 @@ func (s *Store) saveLocked() error {
 
 // repoID derives a short, stable identifier from a repository path.
 func repoID(path string) string {
-	h := sha1.Sum([]byte(path))
+	h := sha1.Sum([]byte(path)) //nolint:gosec // stable short ID, not a security boundary
 	return hex.EncodeToString(h[:])[:10]
 }
 
