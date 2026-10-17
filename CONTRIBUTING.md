@@ -21,6 +21,22 @@ the [MIT License](LICENSE).
    Labels on the PR decide where it appears in the release notes; area labels
    are added automatically from the files you change.
 
+## AI-assisted contributions
+
+You're welcome to use AI tools (CodeDiver is built for them), but you are the
+author of your pull request:
+
+- **Read and understand every line you submit**, and be ready to explain it
+  in review.
+- **Run it before opening the PR:** `make test` and `make lint` must pass
+  locally. PRs that are clearly unreviewed output (placeholder text,
+  truncated files, deleted tests, code that doesn't compile) will be closed.
+- **Keep the change to the issue.** Don't let a tool rewrite or reformat files
+  it didn't need to touch, and never remove tests to make something pass.
+- **Write the PR description yourself,** and make sure it matches the diff.
+- Signing off a commit (`git commit -s`) certifies you have the right to
+  submit it, whoever or whatever helped write it.
+
 ## Finding something to work on
 
 Issues move through these labels:
