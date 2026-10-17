@@ -21,6 +21,24 @@ the [MIT License](LICENSE).
    Labels on the PR decide where it appears in the release notes; area labels
    are added automatically from the files you change.
 
+## Finding something to work on
+
+Issues move through these labels:
+
+| Label | Meaning |
+|---|---|
+| `triage` | New; a maintainer hasn't looked at it yet. Issue forms add it automatically. |
+| `needs repro` | Triaged, but we need steps or details to reproduce it before anyone can fix it. |
+| `ready` | Triaged and specified: [pick one up](https://github.com/aitakemyjob/codediver/issues?q=is%3Aopen+label%3Aready). |
+
+`good first issue` marks small, well-scoped `ready` issues. `area: …` labels
+say which part of the app is involved, and a milestone (e.g. `v0.1.1`) means
+we'd like it in that release.
+
+To take a `ready` issue, comment that you're working on it so nobody
+duplicates the effort. Open questions in an issue can be settled in the
+issue thread before or during the PR.
+
 ## Setup
 
 ```sh
