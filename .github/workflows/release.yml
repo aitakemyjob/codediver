@@ -16,8 +16,10 @@ on:
         description: Existing tag to (re)build, e.g. v0.2.0
         required: true
 
+# Read-only by default; only the publish job, which creates the release,
+# gets write access.
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.event.inputs.tag || github.ref_name }}
