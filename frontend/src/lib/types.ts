@@ -55,6 +55,7 @@ export interface AppState {
   mcp: MCPStatus;
   heatMetrics: Record<string, string>;
   canPickDir: boolean;
+  canSaveFile?: boolean;
   gitFound: boolean;
 }
 
@@ -477,9 +478,74 @@ export interface BusEvent<T = unknown> {
   data: T;
 }
 
+export interface DemoNode {
+  id: string;
+  label: string;
+  kind?: string;
+  detail?: string;
+  group?: string;
+  parent?: string;
+  icon?: string;
+  symbol?: string;
+  file?: string;
+  line?: number;
+}
+
+export interface DemoEdge {
+  from: string;
+  to: string;
+  label?: string;
+  detail?: string;
+  kind?: string;
+  color?: string;
+}
+
+export interface DemoFlow {
+  from: string;
+  to: string;
+  label?: string;
+  detail?: string;
+  kind?: 'request' | 'response' | 'error' | 'event' | 'data' | string;
+  color?: string;
+}
+
+export interface DemoStep {
+  title: string;
+  narration?: string;
+  reveal?: string[];
+  focus?: string[];
+  flows?: DemoFlow[];
+  values?: Record<string, string>;
+  code?: { file: string; line?: number; end_line?: number };
+}
+
+export interface Demo {
+  id: string;
+  repo: string;
+  title: string;
+  summary?: string;
+  layout: 'architecture' | 'tree';
+  nodes: DemoNode[];
+  edges: DemoEdge[];
+  steps: DemoStep[];
+  createdAt: string;
+}
+
+export interface Animation {
+  id: string;
+  repo: string;
+  title: string;
+  caption?: string;
+  format: 'svg' | 'html';
+  source: string;
+  createdAt: string;
+}
+
 export interface SessionData {
   walkthroughs: Walkthrough[];
   diagrams: Diagram[];
+  demos: Demo[];
+  animations: Animation[];
   explanations: Explanation[];
   annotations: Annotation[];
 }

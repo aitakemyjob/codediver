@@ -17,6 +17,8 @@ const DiagramView = lazy(() => import('./DiagramView'));
 const SettingsView = lazy(() => import('./SettingsView'));
 const HistoryView = lazy(() => import('./HistoryView'));
 const QAView = lazy(() => import('./qa/QAView'));
+const DemoView = lazy(() => import('./demo/DemoView'));
+const AnimationView = lazy(() => import('./demo/AnimationView'));
 
 /** Renders the view component for a tab. */
 function render(tab: Tab, active: boolean) {
@@ -46,6 +48,10 @@ function render(tab: Tab, active: boolean) {
       return <HistoryView {...p} />;
     case 'qa':
       return <QAView {...p} />;
+    case 'demo':
+      return <DemoView {...p} />;
+    case 'animation':
+      return <AnimationView {...p} />;
   }
 }
 
