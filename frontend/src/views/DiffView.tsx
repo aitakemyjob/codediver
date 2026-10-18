@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { Columns2, Flame, GitCompare, Network, Rows2, Workflow } from 'lucide-react';
+import { Columns2, Flame, GitCommit, GitCompare, Network, Rows2, Workflow, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { actions } from '../lib/actions';
 import { useStore } from '../lib/store';
@@ -50,7 +50,11 @@ export function FileList({ files, selected, onSelect }: { files: DiffFile[]; sel
  */
 export default function DiffView({ tab }: ViewProps) {
   const s = useStore();
-  const [spec, setSpec] = useState<DiffSpec>({ base: (tab.params.base as string) || undefined, head: (tab.params.head as string) || undefined, staged: !!tab.params.staged });
+  const [spec, setSpec] = useState<DiffSpec>(
+    tab.params.commit
+      ? { commit: String(tab.params.commit) }
+      : { base: (tab.params.base as string) || undefined, head: (tab.params.head as string) || undefined, staged: !!tab.params.staged },
+  );
   const [selected, setSelected] = useState<string | undefined>(tab.params.select as string | undefined);
   const [inline, setInline] = useState(false);
   const [showImpact, setShowImpact] = useState(false);
@@ -74,21 +78,30 @@ export default function DiffView({ tab }: ViewProps) {
       <div className="toolbar">
         <GitCompare size={16} style={{ color: 'var(--accent)' }} />
         <span className="title">Review</span>
-        <select className="input select" style={{ width: 170, height: 28 }} value={spec.staged ? ':staged' : spec.base ?? ''} onChange={(e) => {
-          const v = e.target.value;
-          setSpec(v === ':staged' ? { staged: true } : { base: v || undefined, head: v ? spec.head : undefined });
-        }}>
-          <option value="">HEAD</option>
-          <option value=":staged">Staged (index)</option>
-          {refs.data?.map((r) => <option key={r.kind + r.name} value={r.name}>{r.kind === 'tag' ? '🏷 ' : ''}{r.name}</option>)}
-          {spec.base && !refs.data?.some((r) => r.name === spec.base) && <option value={spec.base}>{spec.base.slice(0, 12)}</option>}
-        </select>
-        <span className="faint">→</span>
-        <select className="input select" style={{ width: 170, height: 28 }} disabled={spec.staged} value={spec.head ?? ''} onChange={(e) => setSpec({ ...spec, head: e.target.value || undefined, base: spec.base ?? 'HEAD' })}>
-          <option value="">Working tree</option>
-          {refs.data?.map((r) => <option key={r.kind + r.name} value={r.name}>{r.name}</option>)}
-          {spec.head && !refs.data?.some((r) => r.name === spec.head) && <option value={spec.head}>{spec.head.slice(0, 12)}</option>}
-        </select>
+        {spec.commit ? (
+          <span className="pill" title={spec.commit}>
+            <GitCommit size={13} /> Commit <span className="mono">{spec.commit.slice(0, 7)}</span>
+            <button className="btn ghost icon sm" title="Compare revisions instead" onClick={() => setSpec({})}><X size={12} /></button>
+          </span>
+        ) : (
+          <>
+            <select className="input select" style={{ width: 170, height: 28 }} value={spec.staged ? ':staged' : spec.base ?? ''} onChange={(e) => {
+              const v = e.target.value;
+              setSpec(v === ':staged' ? { staged: true } : { base: v || undefined, head: v ? spec.head : undefined });
+            }}>
+              <option value="">HEAD</option>
+              <option value=":staged">Staged (index)</option>
+              {refs.data?.map((r) => <option key={r.kind + r.name} value={r.name}>{r.kind === 'tag' ? '🏷 ' : ''}{r.name}</option>)}
+              {spec.base && !refs.data?.some((r) => r.name === spec.base) && <option value={spec.base}>{spec.base.slice(0, 12)}</option>}
+            </select>
+            <span className="faint">→</span>
+            <select className="input select" style={{ width: 170, height: 28 }} disabled={spec.staged} value={spec.head ?? ''} onChange={(e) => setSpec({ ...spec, head: e.target.value || undefined, base: spec.base ?? 'HEAD' })}>
+              <option value="">Working tree</option>
+              {refs.data?.map((r) => <option key={r.kind + r.name} value={r.name}>{r.name}</option>)}
+              {spec.head && !refs.data?.some((r) => r.name === spec.head) && <option value={spec.head}>{spec.head.slice(0, 12)}</option>}
+            </select>
+          </>
+        )}
         {ov.data && (
           <span className="badge">
             {files.length} files · <span className="add">+{ov.data.additions}</span> <span className="del">−{ov.data.deletions}</span> · {totalSyms} functions

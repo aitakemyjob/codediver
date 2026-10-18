@@ -73,6 +73,26 @@ func TestIndexCacheInvalidatesOnChange(t *testing.T) {
 	}
 }
 
+func TestFileVersionsForRootCommit(t *testing.T) {
+	needGit(t)
+	s, rt, _ := newService(t)
+	ctx := context.Background()
+	// The fixture repo has a single (root) commit.
+	ov, err := s.Diff(ctx, rt, gitx.DiffSpec{Commit: "HEAD"}, false)
+	if err != nil || len(ov.Files) == 0 {
+		t.Fatalf("root commit diff = %+v %v", ov, err)
+	}
+	for _, f := range ov.Files {
+		if f.Status != gitx.StatusAdded {
+			t.Errorf("%s status = %s, want added", f.Path, f.Status)
+		}
+	}
+	fv, err := s.FileVersions(ctx, rt, "store/store.go", "", gitx.DiffSpec{Commit: "HEAD"})
+	if err != nil || fv.Original != "" || fv.Modified != testutil.Files["store/store.go"] {
+		t.Fatalf("versions = %q / %d bytes, %v", fv.Original, len(fv.Modified), err)
+	}
+}
+
 func TestDiffMapsSymbolsAndImpact(t *testing.T) {
 	needGit(t)
 	s, rt, dir := newService(t)

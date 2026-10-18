@@ -248,7 +248,7 @@ function ChangesPanel() {
   const staged = entries.filter((e) => e.staged);
   const unstaged = entries.filter((e) => !e.staged);
   const openDiff = (path?: string, spec: Record<string, unknown> = {}) =>
-    s.open({ kind: 'diff', title: spec.head ? `${String(spec.head).slice(0, 7)}` : 'Changes', params: { ...spec, select: path } });
+    s.open({ kind: 'diff', title: spec.commit ? String(spec.commit).slice(0, 7) : 'Changes', params: { ...spec, select: path } });
   if (status.data && !status.data.info.isRepo) {
     return (
       <>
@@ -294,7 +294,7 @@ function ChangesPanel() {
         {group('Changes', unstaged, {})}
         <div className="section-title">History</div>
         {log.data?.map((c: Commit) => (
-          <div key={c.hash} className="list-item" onClick={() => openDiff(undefined, { base: `${c.hash}~1`, head: c.hash })}>
+          <div key={c.hash} className="list-item" onClick={() => openDiff(undefined, { commit: c.hash })}>
             <GitCommit size={14} className="faint" style={{ marginTop: 2, flex: 'none' }} />
             <div className="grow">
               <div className="title ellipsis">{c.subject}</div>

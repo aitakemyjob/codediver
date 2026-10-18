@@ -155,6 +155,10 @@ func parseStatusZ(out string) []StatusEntry {
 //   - Base only: working tree vs Base
 //   - Base and Head: Base vs Head
 type DiffSpec struct {
+	// Commit, when set, selects the changes that commit introduced: it is
+	// compared with its first parent, or with the empty tree for a root
+	// commit. Base and Head are ignored.
+	Commit  string   `json:"commit,omitempty"`
 	Base    string   `json:"base,omitempty"`
 	Head    string   `json:"head,omitempty"`
 	Staged  bool     `json:"staged,omitempty"`
@@ -176,6 +180,13 @@ func validRef(ref string) error {
 func (r *Repo) Diff(ctx context.Context, spec DiffSpec) ([]FileDiff, error) {
 	if spec.Context <= 0 {
 		spec.Context = 3
+	}
+	if spec.Commit != "" {
+		base, head, err := r.CommitRange(ctx, spec.Commit)
+		if err != nil {
+			return nil, err
+		}
+		spec.Base, spec.Head, spec.Staged = base, head, false
 	}
 	args := []string{"diff", "--no-ext-diff", "--no-textconv", "-M", "--src-prefix=a/", "--dst-prefix=b/", fmt.Sprintf("-U%d", spec.Context)}
 	for _, ref := range []string{spec.Base, spec.Head} {
@@ -247,6 +258,36 @@ func pathSelected(p string, filters []string) bool {
 		}
 	}
 	return false
+}
+
+// Empty tree object IDs, used as the "before" side of a root commit.
+const (
+	emptyTreeSHA1   = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+	emptyTreeSHA256 = "6ef19b41225c5369f1c104d45d8d85efa9b057b53b14b4b9b939dd74decc5321"
+)
+
+// CommitRange returns the revisions to compare to see what a commit
+// introduced: its first parent and the commit itself, or the empty tree
+// and the commit when it has no parent (the first commit of a history).
+func (r *Repo) CommitRange(ctx context.Context, commit string) (base, head string, err error) {
+	if err := validRef(commit); err != nil {
+		return "", "", err
+	}
+	out, err := r.run(ctx, "rev-parse", "--verify", "--quiet", commit+"^{commit}")
+	if err != nil {
+		if errors.Is(err, ErrNotRepo) {
+			return "", "", err
+		}
+		return "", "", fmt.Errorf("unknown commit %q", commit)
+	}
+	head = strings.TrimSpace(out)
+	if out, err := r.run(ctx, "rev-parse", "--verify", "--quiet", head+"^1"); err == nil {
+		return strings.TrimSpace(out), head, nil
+	}
+	if format, _ := r.run(ctx, "rev-parse", "--show-object-format"); strings.TrimSpace(format) == "sha256" {
+		return emptyTreeSHA256, head, nil
+	}
+	return emptyTreeSHA1, head, nil
 }
 
 // Show returns a file's content at a ref ("" or "HEAD" for HEAD, ":" for the index).

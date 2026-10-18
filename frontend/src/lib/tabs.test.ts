@@ -7,6 +7,10 @@ describe('tabs', () => {
       tabKey('graph', { kind: 'callgraph', symbol: 'x', direction: 'callers' }),
     );
     expect(tabKey('heatmap', { metric: 'churn' })).toBe(tabKey('heatmap', { metric: 'size' }));
+    // A single-commit review is its own tab, independent of base/head ranges.
+    expect(tabKey('diff', { commit: 'abc' })).toBe('diff:commit:abc');
+    expect(tabKey('diff', { commit: 'abc' })).not.toBe(tabKey('diff', { commit: 'def' }));
+    expect(tabKey('diff', { base: 'abc~1', head: 'abc' })).not.toBe(tabKey('diff', { commit: 'abc' }));
   });
 
   it('opens after the active tab and re-focuses duplicates', () => {

@@ -101,6 +101,7 @@ type typesArgs struct {
 
 type diffArgs struct {
 	Repo   string   `json:"repo,omitempty" jsonschema:"repository name or id; defaults to the repo open in CodeDiver"`
+	Commit string   `json:"commit,omitempty" jsonschema:"show what this one commit changed (vs. its parent; works for the first commit too). Overrides base/head"`
 	Base   string   `json:"base,omitempty" jsonschema:"base ref (commit, branch, tag). Empty = HEAD"`
 	Head   string   `json:"head,omitempty" jsonschema:"head ref. Empty = working tree"`
 	Staged bool     `json:"staged,omitempty" jsonschema:"diff the index instead of the working tree"`
@@ -628,8 +629,11 @@ func (s *Server) register() {
 			return sb.String(), nil
 		})
 
-	addTool(s, &mcp.Tool{Name: "git_diff", Description: "Diff summary (files, +/-, and which functions changed) or full patch. Defaults to working tree vs HEAD. Set show=true to open CodeDiver's visual review with heatmap and impact graph.", Annotations: readOnly("Git diff")},
+	addTool(s, &mcp.Tool{Name: "git_diff", Description: "Diff summary (files, +/-, and which functions changed) or full patch. Defaults to working tree vs HEAD; pass commit to see what a single commit changed. Set show=true to open CodeDiver's visual review with heatmap and impact graph.", Annotations: readOnly("Git diff")},
 		func(a diffArgs) string {
+			if a.Commit != "" {
+				return "commit " + a.Commit
+			}
 			if a.Base == "" && a.Head == "" {
 				if a.Staged {
 					return "staged"
@@ -642,13 +646,13 @@ func (s *Server) register() {
 			if err != nil {
 				return "", err
 			}
-			spec := gitx.DiffSpec{Base: a.Base, Head: a.Head, Staged: a.Staged, Paths: a.Paths}
+			spec := gitx.DiffSpec{Commit: a.Commit, Base: a.Base, Head: a.Head, Staged: a.Staged, Paths: a.Paths}
 			ov, err := c.Diff(ctx, rt, spec, true)
 			if err != nil {
 				return "", err
 			}
 			if a.Show {
-				c.Show(core.Focus{View: "diff", Repo: rt.ID(), Params: map[string]any{"base": a.Base, "head": a.Head, "staged": a.Staged}})
+				c.Show(core.Focus{View: "diff", Repo: rt.ID(), Params: map[string]any{"commit": a.Commit, "base": a.Base, "head": a.Head, "staged": a.Staged}})
 			}
 			var sb strings.Builder
 			fmt.Fprintf(&sb, "%d files changed, +%d −%d\n", len(ov.Files), ov.Additions, ov.Deletions)

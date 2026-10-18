@@ -17,7 +17,7 @@ export default function HistoryView({ tab }: ViewProps) {
   const [sel, setSel] = useState<string>();
   const commit = log.data?.find((c) => c.hash === sel) ?? log.data?.[0];
   const v = useAsync(
-    () => (commit ? api.versions(s.repoId, path, '', { base: `${commit.hash}~1`, head: commit.hash }) : Promise.resolve(undefined)),
+    () => (commit ? api.versions(s.repoId, path, '', { commit: commit.hash }) : Promise.resolve(undefined)),
     [commit?.hash, path, s.repoId],
   );
   if (log.error) return <ErrorBox error={log.error} />;
@@ -42,7 +42,9 @@ export default function HistoryView({ tab }: ViewProps) {
           ))}
         </div>
         <div className="main">
-          {v.data ? (
+          {v.error ? (
+            <ErrorBox error={v.error} />
+          ) : v.data ? (
             <Suspense fallback={<Spinner />}>
               <DiffEditor original={v.data.original} modified={v.data.modified} language={v.data.language} />
             </Suspense>

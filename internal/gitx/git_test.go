@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -161,6 +162,45 @@ func TestRepoIntegration(t *testing.T) {
 	}
 	if _, err := r.Diff(ctx, DiffSpec{Base: "--output=/tmp/x"}); err == nil {
 		t.Fatal("option-looking refs must be rejected")
+	}
+}
+
+func TestCommitDiff(t *testing.T) {
+	dir := gitInit(t)
+	r := New(dir)
+	ctx := context.Background()
+	log, err := r.Log(ctx, 10, "", "")
+	if err != nil || len(log) != 2 {
+		t.Fatalf("log = %+v %v", log, err)
+	}
+	root, second := log[1].Hash, log[0].Hash
+
+	// A root commit has no parent: it is compared with the empty tree, so
+	// everything it contains shows as added.
+	base, head, err := r.CommitRange(ctx, root)
+	if err != nil || base != emptyTreeSHA1 || head != root {
+		t.Fatalf("root range = %q %q %v", base, head, err)
+	}
+	diffs, err := r.Diff(ctx, DiffSpec{Commit: root})
+	if err != nil || len(diffs) != 1 || diffs[0].Status != StatusAdded || diffs[0].Additions != 3 {
+		t.Fatalf("root diff = %+v %v", diffs, err)
+	}
+
+	// Other commits are compared with their first parent; Base/Head are
+	// ignored when Commit is set.
+	diffs, err = r.Diff(ctx, DiffSpec{Commit: second[:7], Base: "nope", Head: "nope"})
+	if err != nil || len(diffs) != 1 || diffs[0].Status != StatusModified {
+		t.Fatalf("second diff = %+v %v", diffs, err)
+	}
+	if base, _, _ := r.CommitRange(ctx, second); base != root {
+		t.Errorf("parent of second = %q, want %q", base, root)
+	}
+
+	if _, err := r.Diff(ctx, DiffSpec{Commit: "deadbeef"}); err == nil || !strings.Contains(err.Error(), "unknown commit") {
+		t.Errorf("unknown commit err = %v", err)
+	}
+	if _, _, err := r.CommitRange(ctx, "--output=/tmp/x"); err == nil {
+		t.Error("option-looking commits must be rejected")
 	}
 }
 
