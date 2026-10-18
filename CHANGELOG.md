@@ -8,6 +8,21 @@ every merged pull request.
 
 ## [Unreleased]
 
+### Added
+- **Demos:** agents can play animated, step-by-step demos with
+  `show_demo` — architecture diagrams with nested containers, icons,
+  regions and color-coded paths, or execution trees seeded from the call
+  graph — with packets moving along routed edges, values on each box,
+  narration and code. Zoom, pan and a camera that follows the action.
+- **Animations:** `show_animation` plays an agent-written SVG or HTML
+  animation in a sandbox with no network access; save it as HTML.
+- **Export:** any demo step as PNG or SVG, the whole demo as a PDF.
+  Agents can render steps themselves with `export_demo` (PNG returned as
+  an image, or SVG text).
+- When an agent shows a demo, animation, walkthrough, diagram or
+  explanation for a repository you aren't viewing, a toast offers to
+  switch to it.
+
 ### Fixed
 - Arrow keys in a walkthrough could throw an error when the key event
   didn't come from a page element.
