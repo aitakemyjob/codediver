@@ -91,8 +91,9 @@ Each release also includes an SPDX SBOM listing every Go and npm dependency.
 2. Connect your agent (the **MCP** pill in the title bar shows these too):
 
    ```sh
-   # Claude Code
-   claude mcp add --transport http codediver http://127.0.0.1:47474/mcp
+   # Claude Code (user scope: available in every project; use --scope project
+   # to share it with your team through .mcp.json instead)
+   claude mcp add --transport http --scope user codediver http://127.0.0.1:47474/mcp
    ```
 
    ```jsonc

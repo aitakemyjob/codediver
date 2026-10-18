@@ -34,6 +34,8 @@ every merged pull request.
 - The folder picker's Browse button was missing in the Linux desktop app.
 - Release candidates are packaged so they sort before the final release
   (`0.1.0~rc.2` < `0.1.0`).
+- The Claude Code connection command now uses `--scope user`, so CodeDiver is
+  available in every project instead of only the folder where it was added.
 
 ## [0.1.0] — 2026-10-16
 
