@@ -24,6 +24,13 @@ every merged pull request.
   switch to it.
 
 ### Fixed
+- **Sandbox:** on macOS and Windows, agents could read files hidden from
+  them by using another spelling of the name: different case (`.ENV`,
+  `.GIT/config`), a trailing dot or space, or a Windows data stream
+  (`.env::$DATA`). Exclude rules now match all of those on every OS, and
+  a rule like `.env` also hides everything inside a `.env` directory.
+- Release builds and scanners now agree on Go 1.26.9 as the minimum, and
+  vulnerable indirect dependencies were updated (none were reachable).
 - Arrow keys in a walkthrough could throw an error when the key event
   didn't come from a page element.
 
