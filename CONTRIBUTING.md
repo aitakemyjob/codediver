@@ -10,14 +10,16 @@ the [MIT License](LICENSE).
    agree on the approach.
 2. Fork, create a branch (`feat/...`, `fix/...`, `docs/...`), and keep PRs
    focused.
-3. Run `make test` and `make lint` before pushing. CI must be green and a
+3. Add tests with your change: new functionality and bug fixes come with
+   tests in the automated suite that fail without the change.
+4. Run `make test` and `make lint` before pushing. CI must be green and a
    maintainer review is required before merging into `main`; PRs are
    squash-merged.
-4. Sign off every commit (`git commit -s`). This adds a `Signed-off-by:` line
+5. Sign off every commit (`git commit -s`). This adds a `Signed-off-by:` line
    certifying, under the [Developer Certificate of Origin](https://developercert.org),
    that you have the right to submit the change. The DCO check fails without
    it; fix existing commits with `git rebase --signoff main`.
-5. Use clear commit/PR titles, e.g. `fix: trace graph misses method values`.
+6. Use clear commit/PR titles, e.g. `fix: trace graph misses method values`.
    Labels on the PR decide where it appears in the release notes; area labels
    are added automatically from the files you change.
 
