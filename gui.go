@@ -6,6 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -38,6 +41,7 @@ type Desktop struct {
 func newDesktop(a *api.API, c *core.Service) *Desktop {
 	d := &Desktop{api: a, core: c, ready: make(chan struct{})}
 	a.PickDirectory = d.pickDirectory
+	a.SaveFile = d.saveFile
 	return d
 }
 
@@ -59,6 +63,27 @@ func (d *Desktop) pickDirectory() (string, error) {
 		return "", err
 	}
 	return wruntime.OpenDirectoryDialog(ctx, wruntime.OpenDialogOptions{Title: "Add a repository to CodeDiver", CanCreateDirectories: false})
+}
+
+// saveFile asks where to save an exported file and writes it there. An
+// empty path means the developer cancelled.
+func (d *Desktop) saveFile(name string, data []byte) (string, error) {
+	ctx, err := d.runtimeCtx()
+	if err != nil {
+		return "", err
+	}
+	opts := wruntime.SaveDialogOptions{Title: "Export", DefaultFilename: name, CanCreateDirectories: true}
+	if ext := filepath.Ext(name); ext != "" {
+		opts.Filters = []wruntime.FileFilter{{DisplayName: strings.ToUpper(ext[1:]) + " files", Pattern: "*" + ext}}
+	}
+	path, err := wruntime.SaveFileDialog(ctx, opts)
+	if err != nil || path == "" {
+		return "", err
+	}
+	if filepath.Ext(path) == "" {
+		path += filepath.Ext(name)
+	}
+	return path, os.WriteFile(path, data, 0o644)
 }
 
 // Invoke calls an API method; args and result are JSON strings. Calls made

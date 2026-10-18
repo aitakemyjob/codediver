@@ -20,8 +20,11 @@ type session struct {
 	seq          int
 	walkthroughs map[string]*Walkthrough
 	diagrams     map[string]*Diagram
-	explains     map[string]*Explanation // by repo|symbol
-	annotations  map[string][]Annotation // by repo
+	demos        map[string]*Demo
+	animations   map[string]*Animation
+	renders      map[string]chan RenderResult // pending renders by id
+	explains     map[string]*Explanation      // by repo|symbol
+	annotations  map[string][]Annotation      // by repo
 	ctx          UIContext
 	activity     []Activity
 	attn         map[string]map[string]int // repo -> file -> count
@@ -32,6 +35,9 @@ func newSession() *session {
 	return &session{
 		walkthroughs: map[string]*Walkthrough{},
 		diagrams:     map[string]*Diagram{},
+		demos:        map[string]*Demo{},
+		animations:   map[string]*Animation{},
+		renders:      map[string]chan RenderResult{},
 		explains:     map[string]*Explanation{},
 		annotations:  map[string][]Annotation{},
 		attn:         map[string]map[string]int{},

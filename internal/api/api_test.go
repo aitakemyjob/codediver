@@ -133,3 +133,35 @@ func TestQAMethods(t *testing.T) {
 		t.Errorf("testsFor = %s", out)
 	}
 }
+
+func TestFileSaveAndRenderResult(t *testing.T) {
+	a := setup(t)
+	// Browser mode: no native dialog, so the UI downloads instead.
+	if _, err := a.Invoke(context.Background(), "file.save", json.RawMessage(`{"name":"a.png","data":"aGk="}`)); err == nil || !strings.Contains(err.Error(), "desktop app") {
+		t.Errorf("file.save without a dialog: %v", err)
+	}
+	if out := call(t, a, "app.state", nil); !strings.Contains(out, `"canSaveFile":false`) {
+		t.Errorf("state = %s", out)
+	}
+
+	var gotName string
+	var gotData []byte
+	a.SaveFile = func(name string, data []byte) (string, error) {
+		gotName, gotData = name, data
+		return "/home/me/" + name, nil
+	}
+	if out := call(t, a, "app.state", nil); !strings.Contains(out, `"canSaveFile":true`) {
+		t.Errorf("state = %s", out)
+	}
+	// Only the base name is offered to the dialog.
+	out := call(t, a, "file.save", map[string]string{"name": "../../etc/demo.png", "data": "aGk="})
+	if gotName != "demo.png" || string(gotData) != "hi" || !strings.Contains(out, "/home/me/demo.png") {
+		t.Errorf("saved %q %q → %s", gotName, gotData, out)
+	}
+	if _, err := a.Invoke(context.Background(), "file.save", json.RawMessage(`{"name":"a.png","data":"not base64!"}`)); err == nil {
+		t.Error("bad base64 accepted")
+	}
+
+	// A late or unknown render answer is ignored, not an error.
+	call(t, a, "render.result", core.RenderResult{ID: "render404", Data: "x"})
+}

@@ -1,0 +1,34 @@
+[["show_demo", {
+ "title": "How an agent's tool call reaches your screen",
+ "summary": "Follow one `trace_to` call from Claude Code through CodeDiver's MCP server, the sandbox and the analysis index, until the graph appears in your window.",
+ "layout": "architecture",
+ "nodes": [
+  {"id": "agent", "label": "Claude Code", "kind": "actor", "group": "agent"},
+  {"id": "mcp", "label": "MCP server", "kind": "service", "group": "codediver", "detail": "internal/mcpserver", "symbol": "addTool"},
+  {"id": "guard", "label": "Access guard", "kind": "module", "group": "codediver", "detail": "Service.AgentRepo", "symbol": "Service.AgentRepo"},
+  {"id": "core", "label": "Core service", "kind": "service", "group": "codediver", "detail": "Service.TraceTo", "symbol": "Service.TraceTo"},
+  {"id": "index", "label": "Analysis index", "kind": "datastore", "group": "codediver", "detail": "go/types + lexical"},
+  {"id": "bus", "label": "Event bus", "kind": "queue", "group": "codediver", "symbol": "Bus.Publish"},
+  {"id": "ui", "label": "CodeDiver window", "kind": "ui", "group": "you"},
+  {"id": "repo", "label": "Your repository", "kind": "datastore", "group": "you", "detail": "read through the sandbox"}
+ ],
+ "edges": [
+  {"from": "agent", "to": "mcp", "label": "tools/call"},
+  {"from": "mcp", "to": "guard"},
+  {"from": "guard", "to": "core"},
+  {"from": "core", "to": "index"},
+  {"from": "index", "to": "repo", "label": "reads"},
+  {"from": "core", "to": "bus", "label": "focus"},
+  {"from": "bus", "to": "ui", "kind": "event"},
+  {"from": "mcp", "to": "agent"}
+ ],
+ "steps": [
+  {"title": "The agent calls trace_to", "focus": ["agent"], "reveal": ["mcp"], "flows": [{"from": "agent", "to": "mcp", "label": "trace_to(Memory.Save)"}], "narration": "You asked *how is Save triggered?* Claude Code sends a JSON-RPC `tools/call` to CodeDiver's local MCP endpoint on 127.0.0.1."},
+  {"title": "Every tool goes through one wrapper", "focus": ["mcp"], "code": {"file": "internal/mcpserver/server.go", "line": 90, "end_line": 104}, "narration": "`addTool` times the call and records it in the activity feed, which is how you can always see what the agent looked at."},
+  {"title": "Is this repo shared with agents?", "focus": ["guard"], "reveal": ["guard"], "flows": [{"from": "mcp", "to": "guard", "label": "repo: active"}], "code": {"file": "internal/core/service.go", "line": 115, "end_line": 135}, "narration": "`AgentRepo` enforces your switches: the global agent toggle and each repo's own setting. A hidden repo stops here with an error."},
+  {"title": "The core service builds the trace", "focus": ["core"], "reveal": ["core"], "flows": [{"from": "guard", "to": "core"}], "values": {"core": "symbol=Memory.Save depth=6"}},
+  {"title": "Answers come from the index", "focus": ["index"], "reveal": ["index", "repo"], "flows": [{"from": "core", "to": "index", "label": "callers?", "kind": "data"}, {"from": "index", "to": "repo", "label": "stat + parse", "kind": "data"}], "narration": "The index is rebuilt only when files change. Every read goes through the workspace sandbox, so `.env` files, keys and your excluded globs are invisible.", "values": {"index": "3 paths found"}},
+  {"title": "show=true puts it on your screen", "focus": ["bus", "ui"], "reveal": ["bus", "ui"], "flows": [{"from": "core", "to": "bus", "label": "focus: graph", "kind": "event"}, {"from": "bus", "to": "ui", "label": "open trace tab", "kind": "event"}], "narration": "With **Follow agent** on, the focus event opens the trace in front of you while the agent is still writing its answer."},
+  {"title": "The agent gets a text answer", "focus": ["agent"], "flows": [{"from": "mcp", "to": "agent", "label": "3 caller paths", "kind": "response"}], "values": {"agent": "explains the paths"}, "narration": "Agents get compact text (cheaper than JSON); you get the interactive graph. Same data, two audiences."}
+ ]
+}]]

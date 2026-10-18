@@ -159,6 +159,25 @@ type diagramArgs struct {
 	Layout      string             `json:"layout,omitempty" jsonschema:"LR (default) or TB for nodes/edges diagrams"`
 }
 
+type demoArgs struct {
+	Repo    string          `json:"repo,omitempty" jsonschema:"repository name or id; defaults to the repo open in CodeDiver"`
+	Title   string          `json:"title"`
+	Summary string          `json:"summary,omitempty" jsonschema:"markdown intro shown before step 1"`
+	Layout  string          `json:"layout,omitempty" jsonschema:"architecture (default: left-to-right, nodes grouped into lanes by group) or tree (top-down, for execution/call trees)"`
+	Seed    *core.DemoSeed  `json:"seed,omitempty" jsonschema:"build the scene from the real call tree below a function; steps can then refer to nodes by function name"`
+	Nodes   []core.DemoNode `json:"nodes,omitempty"`
+	Edges   []core.DemoEdge `json:"edges,omitempty"`
+	Steps   []core.DemoStep `json:"steps" jsonschema:"the frames of the demo, played in order"`
+}
+
+type animationArgs struct {
+	Repo    string `json:"repo,omitempty" jsonschema:"repository name or id; defaults to the repo open in CodeDiver"`
+	Title   string `json:"title"`
+	Caption string `json:"caption,omitempty" jsonschema:"markdown shown under the animation"`
+	Format  string `json:"format,omitempty" jsonschema:"svg or html (inferred from source)"`
+	Source  string `json:"source" jsonschema:"a complete, self-contained SVG (with SMIL/CSS animation) or HTML document with inline CSS/JS (canvas, SVG, DOM). No external URLs: network access is blocked"`
+}
+
 type annotateArgs struct {
 	Repo        string            `json:"repo,omitempty" jsonschema:"repository name or id; defaults to the repo open in CodeDiver"`
 	Annotations []core.Annotation `json:"annotations"`
@@ -783,6 +802,38 @@ func (s *Server) register() {
 				return "", err
 			}
 			return fmt.Sprintf("diagram %s displayed", d.ID), nil
+		})
+
+	addTool(s, &mcp.Tool{Name: "show_demo", Description: "Play an animated, step-by-step demo for the developer: a scene of nodes (services, modules, functions, data stores, queues, actors) and edges, laid out as an architecture (lanes by group) or an execution tree, plus steps that reveal parts of it, highlight nodes, animate packets along edges (requests, responses, errors, events), show values on nodes (arguments, return values, state) and show the code for each step. Use it to demonstrate how a request moves through the architecture, how a function call unfolds with concrete inputs, or how state changes over time. For architecture diagrams, nest nodes with parent (e.g. clients, an edge network containing data centers containing DNS/CDN/cache icon tiles, origin servers), give them icons, use kind region for a highlighted boundary and kind note for annotations, and give edges a label, a detail line and a color per path. Pass seed {symbol} to start from the real call tree; steps may then refer to nodes by function name. The developer plays, pauses and steps through it.", Annotations: visual("Show demo")},
+		func(a demoArgs) string { return fmt.Sprintf("%s (%d steps)", a.Title, len(a.Steps)) }, func(ctx context.Context, a demoArgs) (string, error) {
+			rt, err := c.AgentRepo(a.Repo)
+			if err != nil {
+				return "", err
+			}
+			d, err := c.CreateDemo(ctx, rt, core.Demo{Title: a.Title, Summary: a.Summary, Layout: a.Layout, Nodes: a.Nodes, Edges: a.Edges, Steps: a.Steps}, a.Seed)
+			if err != nil {
+				return "", err
+			}
+			ids := make([]string, 0, len(d.Nodes))
+			for _, n := range d.Nodes {
+				ids = append(ids, n.ID)
+			}
+			return fmt.Sprintf("demo %s with %d nodes and %d steps is playing on the developer's screen.\nnode ids: %s", d.ID, len(d.Nodes), len(d.Steps), strings.Join(ids, ", ")), nil
+		})
+
+	addExportTool(s)
+
+	addTool(s, &mcp.Tool{Name: "show_animation", Description: "Show a free-form animation you write yourself, for anything show_demo's scenes don't fit: an algorithm running (sorting, graph search, a cache filling), a state machine, a data structure changing, a timeline. Provide a complete self-contained SVG (SMIL or CSS animation) or HTML document with inline CSS/JS (canvas, SVG, DOM; add your own play/step controls if useful). It runs in a sandbox with no network, no storage and no access to CodeDiver or the developer's files. The theme's colors are available as CSS variables: --bg, --bg-2, --text, --text-2, --accent, --accent-2, --ok, --warn, --err, --border, --font-ui, --font-mono.", Annotations: visual("Show animation")},
+		func(a animationArgs) string { return a.Title }, func(ctx context.Context, a animationArgs) (string, error) {
+			rt, err := c.AgentRepo(a.Repo)
+			if err != nil {
+				return "", err
+			}
+			an, err := c.CreateAnimation(rt, core.Animation{Title: a.Title, Caption: a.Caption, Format: a.Format, Source: a.Source})
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("animation %s (%s, %d bytes) is on the developer's screen.", an.ID, an.Format, len(an.Source)), nil
 		})
 
 	addTool(s, &mcp.Tool{Name: "annotate_code", Description: "Attach inline notes (info, warning, bug, idea, question) to lines of code; they appear in CodeDiver's editor gutter.", Annotations: visual("Annotate code")},

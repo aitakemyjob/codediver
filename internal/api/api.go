@@ -5,8 +5,10 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"runtime"
 	"sort"
 
@@ -25,6 +27,10 @@ type API struct {
 	methods map[string]handler
 	// PickDirectory is provided by the desktop shell; nil in browser mode.
 	PickDirectory func() (string, error)
+	// SaveFile asks where to save a file and writes it (desktop shell only;
+	// nil in browser mode, where the UI downloads instead). It returns the
+	// chosen path, or "" if the developer cancelled.
+	SaveFile func(name string, data []byte) (string, error)
 }
 
 // method adapts a typed function into a handler.
@@ -87,6 +93,7 @@ type AppState struct {
 	MCP         core.MCPStatus     `json:"mcp"`
 	HeatMetrics map[string]string  `json:"heatMetrics"`
 	CanPickDir  bool               `json:"canPickDir"`
+	CanSaveFile bool               `json:"canSaveFile"`
 	GitFound    bool               `json:"gitFound"`
 }
 
@@ -96,7 +103,7 @@ func (a *API) registerApp() {
 	a.methods["app.state"] = method(func(ctx context.Context, _ struct{}) (any, error) {
 		return AppState{
 			Version: c.Version, Platform: runtime.GOOS, Config: c.Config.Get(), Repos: c.ListRepos(ctx),
-			MCP: c.MCPStatus(), HeatMetrics: core.HeatMetrics, CanPickDir: a.PickDirectory != nil, GitFound: gitx.Available(),
+			MCP: c.MCPStatus(), HeatMetrics: core.HeatMetrics, CanPickDir: a.PickDirectory != nil, CanSaveFile: a.SaveFile != nil, GitFound: gitx.Available(),
 		}, nil
 	})
 	a.methods["repos.list"] = method(func(ctx context.Context, _ struct{}) (any, error) { return c.ListRepos(ctx), nil })
@@ -121,6 +128,23 @@ func (a *API) registerApp() {
 	})
 	a.methods["settings.update"] = method(func(ctx context.Context, in config.Settings) (any, error) {
 		return nil, c.UpdateSettings(in)
+	})
+	a.methods["file.save"] = method(func(ctx context.Context, in struct {
+		Name string `json:"name"`
+		Data string `json:"data"` // base64
+	}) (any, error) {
+		if a.SaveFile == nil {
+			return nil, fmt.Errorf("saving files needs the desktop app; the browser downloads them instead")
+		}
+		data, err := base64.StdEncoding.DecodeString(in.Data)
+		if err != nil {
+			return nil, fmt.Errorf("file data: %w", err)
+		}
+		p, err := a.SaveFile(filepath.Base(in.Name), data)
+		return map[string]string{"path": p}, err
+	})
+	a.methods["render.result"] = method(func(ctx context.Context, in core.RenderResult) (any, error) {
+		return nil, c.CompleteRender(in)
 	})
 	a.methods["activity.list"] = method(func(ctx context.Context, _ struct{}) (any, error) { return c.Activity(), nil })
 	a.methods["ui.context"] = method(func(ctx context.Context, in core.UIContext) (any, error) {
@@ -342,6 +366,8 @@ func (a *API) registerSession() {
 			return map[string]any{
 				"walkthroughs": nonNil(c.Walkthroughs(rt.ID())),
 				"diagrams":     nonNil(c.Diagrams(rt.ID())),
+				"demos":        nonNil(c.Demos(rt.ID())),
+				"animations":   nonNil(c.Animations(rt.ID())),
 				"explanations": nonNil(c.Explanations(rt.ID())),
 				"annotations":  c.Annotations(rt.ID()),
 			}, nil
