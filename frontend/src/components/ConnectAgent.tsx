@@ -6,6 +6,14 @@ import { Modal, Snippet } from './ui';
 const clients = ['Claude Code', 'Cursor', 'VS Code', 'Claude Desktop', 'Codex', 'Other'] as const;
 
 /**
+ * The `claude mcp add` command for CodeDiver. `user` scope registers it once
+ * for every project; `project` scope writes a shared `.mcp.json` instead.
+ */
+export function claudeAddCommand(url: string, scope: 'user' | 'project' = 'user'): string {
+  return `claude mcp add --transport http --scope ${scope} codediver ${url}`;
+}
+
+/**
  * Dialog with MCP connection snippets for popular agents and the safety
  * model.
  */
@@ -15,7 +23,10 @@ export function ConnectAgent() {
   const mcp = s.app?.mcp;
   const url = mcp?.url || `http://127.0.0.1:${s.app?.config.settings.mcpPort ?? 47474}/mcp`;
   const snippets: Record<(typeof clients)[number], { note: string; text: string }[]> = {
-    'Claude Code': [{ note: 'Run once in your terminal:', text: `claude mcp add --transport http codediver ${url}` }],
+    'Claude Code': [
+      { note: 'Run once in your terminal. User scope makes CodeDiver available in every project, not just the folder you run it in:', text: claudeAddCommand(url) },
+      { note: 'To share it with your team instead, use project scope, which writes .mcp.json in the repository:', text: claudeAddCommand(url, 'project') },
+    ],
     Cursor: [{ note: 'Add to ~/.cursor/mcp.json:', text: JSON.stringify({ mcpServers: { codediver: { url } } }, null, 2) }],
     'VS Code': [{ note: 'Add to .vscode/mcp.json:', text: JSON.stringify({ servers: { codediver: { type: 'http', url } } }, null, 2) }],
     'Claude Desktop': [
