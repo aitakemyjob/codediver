@@ -71,6 +71,9 @@ func (f *FileCoverage) CountsIn(from, to int) (covered, total int) {
 // Lines splits instrumented lines into covered, uncovered and partial,
 // each sorted ascending. Partial lines also appear in covered.
 func (f *FileCoverage) Lines() (covered, uncovered, partial []int) {
+	// Never nil: these go to the UI as JSON arrays, and a nil slice would be
+	// null (a file with no covered lines, say).
+	covered, uncovered, partial = []int{}, []int{}, []int{}
 	for ln, h := range f.Hits {
 		if h > 0 {
 			covered = append(covered, ln)
