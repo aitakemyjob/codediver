@@ -14,6 +14,15 @@ const CodeView = lazy(() => import('./CodeView'));
  * Guided tour: steps list, narration, the highlighted code, and a map of
  * the path. Arrow keys move between steps.
  */
+/**
+ * Whether a key event comes from somewhere the developer is typing (the
+ * editor or a text field), where arrow keys must not change steps. Key
+ * events can target the window or document, which aren't elements.
+ */
+export function isTypingTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && !!target.closest('.monaco-editor, input, textarea');
+}
+
 export default function WalkthroughView({ tab, active }: ViewProps) {
   const s = useStore();
   const w = s.session.walkthroughs.find((x) => x.id === tab.params.id);
@@ -24,7 +33,7 @@ export default function WalkthroughView({ tab, active }: ViewProps) {
   useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.closest('.monaco-editor, input, textarea')) return;
+      if (isTypingTarget(e.target)) return;
       if (e.key === 'ArrowRight' || e.key === 'j') setI((x) => Math.min(n - 1, x + 1));
       if (e.key === 'ArrowLeft' || e.key === 'k') setI((x) => Math.max(0, x - 1));
     };

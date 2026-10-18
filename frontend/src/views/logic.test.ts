@@ -5,6 +5,7 @@ import { vi } from 'vitest';
 vi.mock('../lib/monaco', () => ({ monaco: {}, setMonacoTheme: () => {} }));
 
 import { stepNodes } from './FlowView';
+import { isTypingTarget } from './WalkthroughView';
 import { fuzzyScore } from '../components/CommandPalette';
 import type { Flow } from '../lib/types';
 
@@ -39,5 +40,18 @@ describe('fuzzyScore', () => {
     expect(fuzzyScore('Index.TraceTo', 'trace')).toBeGreaterThan(fuzzyScore('Index.TraceTo', 'itt'));
     expect(fuzzyScore('internal/mcpserver/tools.go', 'TraceTo')).toBe(0);
     expect(fuzzyScore('anything', '')).toBe(1);
+  });
+});
+
+describe('isTypingTarget', () => {
+  it('ignores keys typed into the editor or fields, and handles non-element targets', () => {
+    document.body.innerHTML = '<div class="monaco-editor"><span id="code"></span></div><input id="field"><button id="btn"></button>';
+    expect(isTypingTarget(document.getElementById('code'))).toBe(true);
+    expect(isTypingTarget(document.getElementById('field'))).toBe(true);
+    expect(isTypingTarget(document.getElementById('btn'))).toBe(false);
+    // Events dispatched on window/document used to crash the handler.
+    expect(isTypingTarget(window)).toBe(false);
+    expect(isTypingTarget(document)).toBe(false);
+    expect(isTypingTarget(null)).toBe(false);
   });
 });
