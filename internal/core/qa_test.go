@@ -187,6 +187,10 @@ func TestQARunCoverageAndCache(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	last := s.LastRun(rt)
+	// The log says which folder the suite ran in.
+	if !strings.Contains(strings.Join(last.Log, "\n"), "in "+filepath.Join(rt.cfg.Path, "web")) {
+		t.Errorf("log doesn't show the working folder: %v", last.Log)
+	}
 	if last.State != "done" || last.Suites[0].State != "passed" || last.Suites[0].Files != 1 || !strings.Contains(strings.Join(last.Log, "\n"), "done") {
 		t.Fatalf("last run = %+v", last)
 	}

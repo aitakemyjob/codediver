@@ -531,6 +531,7 @@ func (s *Service) runSuites(ctx context.Context, cancel context.CancelFunc, rt *
 		}
 		command := qa.Expand(su.Command, out)
 		logLine(fmt.Sprintf("── %s ──", su.Name))
+		logLine("in " + dir)
 		logLine("$ " + command)
 		result, err := qa.Run(ctx, dir, command, logLine)
 		dur := time.Since(start).Milliseconds()
