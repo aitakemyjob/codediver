@@ -26,6 +26,10 @@ every merged pull request.
   `find_test_gaps` and `show_test_plan`.
 
 ### Fixed
+- Clicking the first commit of a repository in History failed with "unknown
+  revision"; it now shows everything that commit added. The per-file History
+  view shows errors instead of spinning forever. Agents can request a single
+  commit's changes with `git_diff`'s new `commit` option.
 - Repository switcher and theme menu dropdowns were clipped by the title bar.
 - The folder picker's Browse button was missing in the Linux desktop app.
 - Release candidates are packaged so they sort before the final release

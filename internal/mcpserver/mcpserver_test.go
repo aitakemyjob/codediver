@@ -169,6 +169,8 @@ func TestGitTools(t *testing.T) {
 		t.Errorf("focus = %+v", ev.Data)
 	}
 	h.mustCall("git_diff", map[string]any{"patch": true}, "+\tm.orders[o.ID] = o // saved")
+	// The fixture's only commit is a root commit: everything shows as added.
+	h.mustCall("git_diff", map[string]any{"commit": "HEAD"}, "added store/store.go", "added api/api.go")
 	h.mustCall("git_log", nil, "initial")
 }
 

@@ -357,6 +357,13 @@ func (s *Service) FileVersions(ctx context.Context, rt *RepoHandle, p, oldPath s
 	if oldPath == "" {
 		oldPath = p
 	}
+	if spec.Commit != "" {
+		base, head, err := rt.git.CommitRange(ctx, spec.Commit)
+		if err != nil {
+			return nil, err
+		}
+		spec = gitx.DiffSpec{Base: base, Head: head}
+	}
 	fv := &FileVersions{Path: p, Language: workspace.Language(p)}
 	show := func(ref, file string) string {
 		out, err := rt.git.Show(ctx, ref, file)

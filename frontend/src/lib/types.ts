@@ -282,6 +282,8 @@ export interface DiffFile {
 }
 
 export interface DiffSpec {
+  /** What one commit changed (vs. its parent, or empty for a root commit); overrides base/head. */
+  commit?: string;
   base?: string;
   head?: string;
   staged?: boolean;

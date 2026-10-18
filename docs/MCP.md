@@ -33,7 +33,7 @@ developer's screen.
 | `get_dependencies` | Package/directory dependency graph, optionally focused on one package. |
 | `get_types` | Structs/classes/interfaces with fields, methods and `implements` edges. |
 | `git_status` | Branch and changed files. |
-| `git_diff` | Files changed, +/−, functions touched and affected callers; `patch: true` for full hunks. |
+| `git_diff` | Files changed, +/−, functions touched and affected callers; `commit` for what one commit changed (including the first commit), `patch: true` for full hunks. |
 | `git_log` | Recent commits with files; optionally for one path. |
 | `get_heatmap` | Files ranked by `churn`, `changes`, `proposals`, `complexity`, `agent`, `size` or `coverage` (uncovered lines). |
 

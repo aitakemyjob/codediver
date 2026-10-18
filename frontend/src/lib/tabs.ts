@@ -29,7 +29,7 @@ export function tabKey(kind: TabKind, p: Record<string, unknown>): string {
     case 'flow':
       return `flow:${str(p.symbol)}`;
     case 'diff':
-      return `diff:${str(p.base)}..${str(p.head)}:${p.staged ? 'staged' : ''}`;
+      return p.commit ? `diff:commit:${str(p.commit)}` : `diff:${str(p.base)}..${str(p.head)}:${p.staged ? 'staged' : ''}`;
     case 'proposal':
     case 'walkthrough':
     case 'diagram':
