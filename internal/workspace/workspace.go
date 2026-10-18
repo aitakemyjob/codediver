@@ -46,15 +46,26 @@ func New(root string, exclude []string) *Workspace {
 }
 
 // Excluded reports whether a repo-relative path matches an exclude glob.
+// Matching is done on the folded form of both (see matchKey), so variants
+// that open the same file on macOS or Windows are excluded too, and a glob
+// without a slash matches any segment of the path, like .gitignore.
 func (w *Workspace) Excluded(rel string, defaults []string) bool {
-	base := path.Base(rel)
+	rel = matchKey(rel)
+	segs := strings.Split(rel, "/")
 	for _, list := range [][]string{defaults, w.Exclude} {
 		for _, pat := range list {
+			pat = strings.ToLower(pat)
 			if pat == "" {
 				continue
 			}
-			if ok, _ := path.Match(pat, base); ok {
-				return true
+			// Like .gitignore, a pattern without a slash matches any path
+			// segment, so ".env" also hides everything in a .env directory.
+			if !strings.Contains(pat, "/") {
+				for _, seg := range segs {
+					if ok, _ := path.Match(pat, seg); ok {
+						return true
+					}
+				}
 			}
 			if ok, _ := path.Match(pat, rel); ok {
 				return true
@@ -66,12 +77,28 @@ func (w *Workspace) Excluded(rel string, defaults []string) bool {
 			}
 		}
 	}
-	for _, seg := range strings.Split(rel, "/") {
+	for _, seg := range segs {
 		if seg == ".git" {
 			return true
 		}
 	}
 	return false
+}
+
+// matchKey folds a slash path for exclude matching. macOS and Windows file
+// systems ignore case, and Windows also drops trailing dots and spaces and
+// reads alternate data streams ("name:stream"), so ".ENV", ".git./config"
+// and ".env::$DATA" all open a protected file there. Folding every path
+// segment the same way catches those variants on every OS.
+func matchKey(p string) string {
+	segs := strings.Split(p, "/")
+	for i, seg := range segs {
+		if j := strings.IndexByte(seg, ':'); j >= 0 {
+			seg = seg[:j]
+		}
+		segs[i] = strings.ToLower(strings.TrimRight(seg, ". "))
+	}
+	return strings.Join(segs, "/")
 }
 
 // Resolve converts a repo-relative (or absolute-inside-root) path to an

@@ -5,7 +5,10 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
+
+	"github.com/aitakemyjob/codediver/internal/config"
 )
 
 func setup(t *testing.T) *Workspace {
@@ -141,4 +144,97 @@ func TestLanguage(t *testing.T) {
 			t.Errorf("Language(%q) = %q, want %q", in, got, want)
 		}
 	}
+}
+
+// realDefaults are the excludes every repo gets.
+var realDefaults = config.DefaultExcludes
+
+// On macOS and Windows these names open the protected file itself, so the
+// sandbox must refuse them on every OS.
+func TestResolveRejectsCaseAndWindowsVariants(t *testing.T) {
+	w := setup(t)
+	for _, p := range []string{
+		".ENV", ".Env.Local", "certs/Server.PEM", "deploy/prod.KEY", "ID_RSA.pub",
+		".GIT/config", "pkg/.Git/HEAD",
+		".git./config", ".env.", ".env ", "key.pem.", // Windows drops trailing dots and spaces
+		".env::$DATA", "certs/a.pem:stream", ".git:x/config", // alternate data streams
+		".env/production", "deploy/.ENV/keys", "old.pem/cert", // inside a directory named like a secret
+	} {
+		if _, _, err := w.Resolve(p, realDefaults); !errors.Is(err, ErrExcluded) {
+			t.Errorf("Resolve(%q) err = %v, want ErrExcluded", p, err)
+		}
+	}
+	// Ordinary files that only look similar stay readable.
+	for _, p := range []string{"pkg/env.go", "docs/pem-files.md", "gitignore.go"} {
+		if _, _, err := w.Resolve(p, realDefaults); err != nil {
+			t.Errorf("Resolve(%q) err = %v", p, err)
+		}
+	}
+	// User excludes match case-insensitively too.
+	w.Exclude = []string{"Secrets/"}
+	if _, _, err := w.Resolve("SECRETS/token.txt", nil); !errors.Is(err, ErrExcluded) {
+		t.Errorf("user exclude: err = %v", err)
+	}
+}
+
+// FuzzResolve checks the sandbox's guarantees for arbitrary input: no
+// panics, only sandbox errors, and every accepted path stays inside the
+// root and never names .git or a default-excluded secret under any
+// spelling a case-insensitive or Windows file system would accept.
+func FuzzResolve(f *testing.F) {
+	root, err := filepath.EvalSymlinks(f.TempDir()) // macOS: /var is a symlink
+	if err != nil {
+		f.Fatal(err)
+	}
+	for name, body := range map[string]string{"pkg/a.go": "package pkg", ".env": "SECRET=1", ".git/config": "[core]", "certs/a.pem": "key"} {
+		p := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			f.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			f.Fatal(err)
+		}
+	}
+	outside := f.TempDir()
+	_ = os.Symlink(outside, filepath.Join(root, "out"))
+	w := New(root, []string{"private/"})
+	for _, seed := range []string{
+		"", ".", "/", "pkg/a.go", "../x", "pkg/../../x", "/etc/passwd", "out/x", ".env", ".ENV", ".git/config",
+		".GIT/config", ".git./config", ".env::$DATA", "certs/A.PEM", "Private/x", "pkg//a.go", "./pkg/a.go",
+		"..\\x", "pkg\\..\\..\\x", "a\x00b", " .env", "pkg/./../.env",
+	} {
+		f.Add(seed)
+	}
+	f.Fuzz(func(t *testing.T, p string) {
+		abs, rel, err := w.Resolve(p, realDefaults)
+		if err != nil {
+			if !errors.Is(err, ErrOutside) && !errors.Is(err, ErrExcluded) {
+				t.Fatalf("Resolve(%q): unexpected error %v", p, err)
+			}
+			return
+		}
+		if !within(root, abs) {
+			t.Fatalf("Resolve(%q) = %q, outside the root", p, abs)
+		}
+		if want := filepath.Join(root, filepath.FromSlash(rel)); rel != "" && want != abs {
+			t.Fatalf("Resolve(%q): rel %q doesn't match abs %q", p, rel, abs)
+		}
+		if real, err := filepath.EvalSymlinks(abs); err == nil && !within(root, real) {
+			t.Fatalf("Resolve(%q) = %q, which leads outside to %q", p, abs, real)
+		}
+		for i, seg := range strings.Split(rel, "/") {
+			if seg == ".." {
+				t.Fatalf("Resolve(%q): rel %q climbs out", p, rel)
+			}
+			if j := strings.IndexByte(seg, ':'); j >= 0 {
+				seg = seg[:j]
+			}
+			seg = strings.TrimRight(seg, ". ")
+			// "private/" is anchored at the root; the defaults match any segment.
+			if strings.EqualFold(seg, ".git") || strings.EqualFold(seg, ".env") || (i == 0 && strings.EqualFold(seg, "private")) ||
+				(len(seg) > 4 && strings.EqualFold(seg[len(seg)-4:], ".pem")) {
+				t.Fatalf("Resolve(%q) let protected %q through", p, rel)
+			}
+		}
+	})
 }
