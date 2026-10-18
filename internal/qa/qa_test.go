@@ -321,6 +321,16 @@ func TestHumanize(t *testing.T) {
 		"rejects files":          "Rejects files",
 		"empty_path_case":        "Empty path case",
 		"Testing":                "Testing",
+		// Known mixed-case words stay whole (#20).
+		"TestParseJaCoCo":          "Parse JaCoCo",
+		"TestGitHubLoginFlow":      "GitHub login flow",
+		"TestOAuthTokenRefresh":    "OAuth token refresh",
+		"TestTypeScriptAndGraphQL": "TypeScript and GraphQL",
+		"TestiOSBuild":             "iOS build",
+		"TestBuildForMacOS":        "Build for MacOS",
+		"TestBuildFor_macOS":       "Build for: macOS",
+		"TestGitHubber":            "Git hubber", // not the word GitHub
+		"test_parse_jacoco":        "Parse jacoco",
 	}
 	for in, want := range cases {
 		if got := Humanize(in); got != want {

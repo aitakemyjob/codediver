@@ -45,6 +45,9 @@ every merged pull request.
   "fork/exec /usr/bin/sh: no such file or directory". Folders are now
   normalized (absolute paths inside the repo, `./`, trailing slashes),
   checked when saved, and checked again before each run.
+- Test names with mixed-case words read correctly in the QA view's Behaviors
+  tab: `TestParseJaCoCo` shows as "Parse JaCoCo" instead of "Parse ja co co"
+  (also GitHub, OAuth, TypeScript, iOS and others).
 
 ## [0.1.0] — 2026-10-16
 

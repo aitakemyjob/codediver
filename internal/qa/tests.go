@@ -525,7 +525,7 @@ func Humanize(name string) string {
 		return sentence(strings.ReplaceAll(name, "_", " "))
 	}
 	for _, p := range []string{"Benchmark", "Example", "Fuzz", "Test", "test_", "test"} {
-		if rest, ok := strings.CutPrefix(name, p); ok && rest != "" && (p == "test_" || !unicode.IsLower(rune(rest[0]))) {
+		if rest, ok := strings.CutPrefix(name, p); ok && rest != "" && (p == "test_" || !unicode.IsLower(rune(rest[0])) || mixedCaseAt([]rune(rest), 0) != "") {
 			name = strings.TrimPrefix(rest, "_")
 			break
 		}
@@ -554,20 +554,72 @@ func Humanize(name string) string {
 	if snake {
 		sep = " "
 	}
-	return sentence(strings.Join(parts, sep))
+	out := strings.Join(parts, sep)
+	if mixedCaseAt([]rune(out), 0) != "" {
+		return out // keep "iOS build" rather than "IOS build"
+	}
+	return sentence(out)
+}
+
+// mixedCase are words written with internal capitals that must not be
+// split at each capital letter (JaCoCo, not "ja co co"). Longest first, so
+// "JavaScript" wins over shorter overlaps.
+var mixedCase = []string{
+	"PostgreSQL", "JavaScript", "TypeScript", "WebSocket", "CodeDiver", "LinkedIn", "YouTube",
+	"OpenAPI", "OpenSSF", "GraphQL", "GitHub", "GitLab", "DevOps", "JaCoCo", "iPhone",
+	"MySQL", "MacOS", "macOS", "OAuth", "iPad", "iOS",
+}
+
+// mixedCaseAt returns the known mixed-case word starting at r[i] on a word
+// boundary, or "".
+func mixedCaseAt(r []rune, i int) string {
+	for _, term := range mixedCase {
+		t := []rune(term)
+		if i+len(t) > len(r) || string(r[i:i+len(t)]) != term {
+			continue
+		}
+		// A lowercase-initial term (iOS, macOS) only starts a word at the
+		// start or after a non-lowercase character.
+		startsWord := i == 0 || unicode.IsUpper(t[0]) || !unicode.IsLower(r[i-1])
+		endsWord := i+len(t) == len(r) || !unicode.IsLower(r[i+len(t)])
+		if startsWord && endsWord {
+			return term
+		}
+	}
+	return ""
 }
 
 // splitCamel splits camelCase into lower-case words, keeping acronyms
-// (HTTPServer → "HTTP server").
+// (HTTPServer → "HTTP server") and known mixed-case words
+// (ParseJaCoCo → "parse JaCoCo").
 func splitCamel(s string) string {
 	r := []rune(s)
+	var words []string
+	plain := 0
+	for i := 0; i < len(r); {
+		if term := mixedCaseAt(r, i); term != "" {
+			words = append(words, camelWords(r[plain:i])...)
+			words = append(words, term)
+			i += len([]rune(term))
+			plain = i
+			continue
+		}
+		i++
+	}
+	words = append(words, camelWords(r[plain:])...)
+	return strings.Join(words, " ")
+}
+
+// camelWords splits a camelCase run into lower-case words, keeping
+// all-caps acronyms as they are.
+func camelWords(r []rune) []string {
 	var words []string
 	start := 0
 	for i := 1; i <= len(r); i++ {
 		boundary := i == len(r) ||
 			(unicode.IsUpper(r[i]) && (unicode.IsLower(r[i-1]) || unicode.IsDigit(r[i-1]))) ||
 			(unicode.IsUpper(r[i]) && i+1 < len(r) && unicode.IsLower(r[i+1]) && unicode.IsUpper(r[i-1]))
-		if boundary {
+		if boundary && i > start {
 			words = append(words, string(r[start:i]))
 			start = i
 		}
@@ -578,7 +630,7 @@ func splitCamel(s string) string {
 		}
 		words[i] = strings.ToLower(w)
 	}
-	return strings.Join(words, " ")
+	return words
 }
 
 // syntax describes how matchClose skips strings and comments.
