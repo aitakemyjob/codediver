@@ -5,9 +5,16 @@ go:
 frontend:
   - changed-files:
       - any-glob-to-any-file: ['frontend/**']
+# Only docs-only PRs are "documentation": most PRs add a CHANGELOG entry,
+# and the release notes group PRs by their first matching label.
 documentation:
   - changed-files:
-      - any-glob-to-any-file: ['docs/**', '**/*.md']
+      - all-globs-to-all-files: ['{docs/**,**/*.md,LICENSE,.github/ISSUE_TEMPLATE/**}']
+# The kind of change, from the branch name (feat/..., fix/...).
+enhancement:
+  - head-branch: ['^feat/']
+bug:
+  - head-branch: ['^fix/']
 ci:
   - changed-files:
       - any-glob-to-any-file: ['.github/**', 'scripts/**', 'Makefile']

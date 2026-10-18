@@ -167,7 +167,15 @@ jobs:
           subject-path: dist/*
       - name: Release notes header
         run: |
-          cat > notes.md <<EOF
+          # The CHANGELOG section for this version leads the notes; GitHub
+          # appends the list of merged PRs below.
+          highlights=$(scripts/changelog-section.sh "$TAG")
+          if [ -n "$highlights" ]; then
+            printf "## What's new in %s\n\n%s\n\n" "${TAG#v}" "$highlights" > notes.md
+          else
+            : > notes.md
+          fi
+          cat >> notes.md <<EOF
           ## Install
 
           **macOS / Linux:** \`curl -fsSL https://raw.githubusercontent.com/${GITHUB_REPOSITORY}/main/scripts/install.sh | sh\`

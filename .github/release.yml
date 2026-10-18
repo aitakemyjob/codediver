@@ -2,7 +2,7 @@
 changelog:
   exclude:
     labels: [duplicate, invalid, wontfix]
-    authors: [dependabot]
+    authors: [dependabot, "dependabot[bot]"]
   categories:
     - title: Breaking changes
       labels: [breaking change]
