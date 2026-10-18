@@ -8,6 +8,7 @@
 
 ## Checklist
 
+- [ ] New behaviour and bug fixes have tests that fail without the change
 - [ ] `make test` passes (Go with `-race` + frontend typecheck/tests)
 - [ ] New Go functions have doc comments; new TS functions/components have JSDoc
 - [ ] UI changes follow the flat style (no gradients/glows) and work in a light and a dark theme
