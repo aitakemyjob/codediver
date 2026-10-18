@@ -6,7 +6,10 @@ const appState: AppState = {
   version: 'test',
   platform: 'linux',
   config: {
-    repos: [{ id: 'r1', name: 'shop', path: '/x', addedAt: '', mcpEnabled: true, exclude: [] }],
+    repos: [
+      { id: 'r1', name: 'shop', path: '/x', addedAt: '', mcpEnabled: true, exclude: [] },
+      { id: 'r2', name: 'firmware', path: '/y', addedAt: '', mcpEnabled: true, exclude: [] },
+    ],
     activeRepo: 'r1',
     settings: { theme: 'nord', fontSize: 13, mcpPort: 47474, mcpEnabled: true, followAgent: true, churnDays: 180 },
   },
@@ -22,9 +25,12 @@ function fakeTransport() {
   const calls: string[] = [];
   const t: Transport = {
     kind: 'browser',
-    async invoke<T>(method: string): Promise<T> {
+    async invoke<T>(method: string, args?: unknown): Promise<T> {
       calls.push(method);
       switch (method) {
+        case 'repos.setActive':
+          appState.config.activeRepo = (args as { id: string }).id;
+          return null as T;
         case 'app.state':
           return appState as T;
         case 'activity.list':
@@ -108,5 +114,31 @@ describe('store', () => {
     f.emit(ev('qa', { repo: 'r1', kind: 'plan', plan: { id: 'plan1', title: 'Cover validate', behaviors: [] } }));
     expect(useStore.getState().qaVersion).toBe(v0 + 2);
     expect(useStore.getState().toasts.some((t) => t.title === 'Agent proposed a test plan')).toBe(true);
+  });
+
+  it('offers to switch repos when the agent shows a demo for another one', async () => {
+    const f = fakeTransport();
+    setTransport(f.t);
+    appState.config.activeRepo = 'r1';
+    await useStore.getState().init();
+    useStore.setState({ toasts: [] });
+    // Routine focus in another repo stays quiet.
+    f.emit(ev('focus', { view: 'code', repo: 'r2', params: { file: 'main.c' } }));
+    expect(useStore.getState().toasts).toHaveLength(0);
+
+    f.emit(ev('focus', { view: 'demo', repo: 'r2', title: 'Byte path', params: { id: 'demo3' } }));
+    const t = useStore.getState().toasts.at(-1)!;
+    expect(t.title).toBe('Agent sent a demo for firmware');
+    expect(t.body).toBe('Byte path');
+    expect(useStore.getState().tabs.some((x) => x.kind === 'demo')).toBe(false);
+
+    t.action!.run();
+    await vi.waitFor(() => expect(useStore.getState().repoId).toBe('r2'));
+    await vi.waitFor(() => expect(useStore.getState().tabs.some((x) => x.kind === 'demo' && x.params.id === 'demo3')).toBe(true));
+    expect(f.calls).toContain('repos.setActive');
+
+    f.emit(ev('focus', { view: 'animation', repo: 'r1', title: 'Bytes', params: { id: 'a1' } }));
+    expect(useStore.getState().toasts.at(-1)!.title).toBe('Agent sent an animation for shop');
+    appState.config.activeRepo = 'r1';
   });
 });

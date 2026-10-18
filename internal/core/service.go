@@ -32,6 +32,8 @@ const (
 	EvContext     = "context"
 	EvMCP         = "mcp"
 	EvQA          = "qa"
+	EvDemo        = "demo"
+	EvAnimation   = "animation"
 )
 
 var ErrAgentDisabled = errors.New("agent access is disabled in CodeDiver settings")

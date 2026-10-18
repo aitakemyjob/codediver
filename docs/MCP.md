@@ -67,6 +67,9 @@ package; reach through callers comes from the call graph.
 | `start_walkthrough` | Guided tour: ordered steps (file/lines or symbol + markdown explanation). |
 | `explain_function` | Summary, meaning of each input and output, logic steps tied to line ranges, side effects and notes — rendered beside the function's control-flow graph with steps pinned to blocks. |
 | `show_diagram` | Mermaid source, or nodes/edges (nodes may link to files) rendered as an interactive graph. |
+| `show_demo` | Animated step-by-step demo: a scene of services, modules, functions, data stores and actors laid out as an architecture (lanes by group, or nested containers via `parent` with icons, icon tiles, regions and colored two-line edge labels) or an execution tree, with steps that reveal nodes, highlight them, send packets along edges, show values (arguments, returns, state) and code. `seed: {symbol}` builds the scene from the real call tree. |
+| `export_demo` | Renders a demo step as a PNG (returned as an image the agent can see) or SVG text (to save into docs), in the light, dark or current theme. Rendering happens in the CodeDiver window, so the app must be open. |
+| `show_animation` | Free-form animation the agent writes (self-contained SVG or HTML/JS), played in a sandbox with no network, storage or access to CodeDiver; theme colors are provided as CSS variables. |
 | `annotate_code` | Inline notes (`info`, `warning`, `bug`, `idea`, `question`) in the editor gutter. |
 
 ## Changing code

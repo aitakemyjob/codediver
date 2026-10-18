@@ -3,7 +3,7 @@ import type { Focus } from './types';
 
 export type TabKind =
   | 'overview' | 'code' | 'graph' | 'flow' | 'heatmap' | 'diff' | 'proposal'
-  | 'walkthrough' | 'diagram' | 'settings' | 'history' | 'qa';
+  | 'walkthrough' | 'diagram' | 'settings' | 'history' | 'qa' | 'demo' | 'animation';
 
 export interface Tab {
   id: string;
@@ -33,6 +33,8 @@ export function tabKey(kind: TabKind, p: Record<string, unknown>): string {
     case 'proposal':
     case 'walkthrough':
     case 'diagram':
+    case 'demo':
+    case 'animation':
       return `${kind}:${str(p.id)}`;
     case 'history':
       return `history:${str(p.path)}`;
@@ -129,6 +131,10 @@ export function focusToTab(f: Focus): NewTab | null {
       return { kind: 'overview', title: 'Overview', params: {}, agent };
     case 'qa':
       return { kind: 'qa', title: 'QA', params: { ...p, flash: Date.now() }, agent };
+    case 'demo':
+      return { kind: 'demo', title: f.title || 'Demo', params: p, agent };
+    case 'animation':
+      return { kind: 'animation', title: f.title || 'Animation', params: p, agent };
   }
   return null;
 }

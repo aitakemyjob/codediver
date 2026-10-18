@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Bot, ChevronRight, Eraser, File, Flame, FolderClosed, FolderOpen, GitCommit, GitCompare, Map as MapIcon, MessageSquareText,
-  Network, RefreshCw, Route, Sparkles, Workflow,
+  Bot, ChevronRight, Clapperboard, Eraser, File, Film, Flame, FolderClosed, FolderOpen, GitCommit, GitCompare, Map as MapIcon,
+  MessageSquareText, Network, RefreshCw, Route, Sparkles, Workflow,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { useStore } from '../lib/store';
@@ -324,6 +324,8 @@ function AgentPanel() {
   }, []);
   const feed = [...s.activity].reverse().slice(0, 80);
   const { walkthroughs, diagrams, explanations, annotations } = s.session;
+  const demos = s.session.demos ?? [];
+  const animations = s.session.animations ?? [];
   return (
     <>
       <div className="panel-head">
@@ -368,6 +370,19 @@ function AgentPanel() {
           <div key={d.id} className="list-item" onClick={() => s.open({ kind: 'diagram', title: d.title, params: { id: d.id } })}>
             <MapIcon size={14} style={{ color: 'var(--accent)', marginTop: 2, flex: 'none' }} />
             <div className="grow"><div className="title ellipsis">{d.title}</div><div className="sub">{d.mermaid ? 'mermaid' : 'graph'} · {relTime(d.createdAt)}</div></div>
+          </div>
+        ))}
+        {demos.length + animations.length > 0 && <div className="section-title"><Clapperboard size={12} /> Demos</div>}
+        {demos.map((d) => (
+          <div key={d.id} className="list-item" onClick={() => s.open({ kind: 'demo', title: d.title, params: { id: d.id } })}>
+            <Clapperboard size={14} style={{ color: 'var(--accent)', marginTop: 2, flex: 'none' }} />
+            <div className="grow"><div className="title ellipsis">{d.title}</div><div className="sub">{d.steps.length} steps · {relTime(d.createdAt)}</div></div>
+          </div>
+        ))}
+        {animations.map((a) => (
+          <div key={a.id} className="list-item" onClick={() => s.open({ kind: 'animation', title: a.title, params: { id: a.id } })}>
+            <Film size={14} style={{ color: 'var(--accent)', marginTop: 2, flex: 'none' }} />
+            <div className="grow"><div className="title ellipsis">{a.title}</div><div className="sub">animation · {relTime(a.createdAt)}</div></div>
           </div>
         ))}
         {annotations.length > 0 && (

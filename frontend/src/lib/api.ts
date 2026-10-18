@@ -25,6 +25,10 @@ export const api = {
   state: () => call<AppState>('app.state'),
   /** Configured repositories with their git state. */
   repos: () => call<RepoSummary[]>('repos.list'),
+  /** Asks where to save a file and writes it (desktop app only); returns the path, '' if cancelled. */
+  saveFile: (name: string, data: string) => call<{ path: string }>('file.save', { name, data }),
+  /** Answers an agent's render request (export_demo). */
+  renderResult: (r: { id: string; data: string; width?: number; height?: number; error?: string }) => call<void>('render.result', r),
   /** Opens the native folder picker (desktop app only). */
   pickDirectory: () => call<{ path: string }>('repos.pick'),
   /** Registers a repository folder. */

@@ -1,13 +1,23 @@
 import { create } from 'zustand';
+import type { RenderRequest } from '../views/demo/export';
 import { api } from './api';
 import { getTransport } from './transport';
 import { activate, closeOthers, closeTab, focusToTab, openTab, type NewTab, type Tab } from './tabs';
 import { applyTheme, themeById, type Theme } from './themes';
 import type {
-  Activity, AppState, BusEvent, Diagram, Explanation, Focus, MCPStatus, Proposal, QARun, SessionData, Settings, TestPlan, Walkthrough, Annotation,
+  Activity, Animation, AppState, BusEvent, Demo, Diagram, Explanation, Focus, MCPStatus, Proposal, QARun, SessionData, Settings, TestPlan, Walkthrough, Annotation,
 } from './types';
 
 export type SidebarPanel = 'explorer' | 'search' | 'changes' | 'agent' | 'outline';
+
+/** Agent-made views worth announcing when they're for another repository. */
+const SHOWN_ELSEWHERE = new Set(['demo', 'animation', 'walkthrough', 'diagram', 'explain']);
+
+/** "a demo", "an animation"… for a focus view. */
+function articleFor(view: string): string {
+  const noun = view === 'explain' ? 'explanation' : view;
+  return /^[aeiou]/.test(noun) ? `an ${noun}` : `a ${noun}`;
+}
 
 export interface Toast {
   id: number;
@@ -119,7 +129,7 @@ function pref(key: string, fallback: boolean): boolean {
   }
 }
 
-const emptySession: SessionData = { walkthroughs: [], diagrams: [], explanations: [], annotations: [] };
+const emptySession: SessionData = { walkthroughs: [], diagrams: [], demos: [], animations: [], explanations: [], annotations: [] };
 let toastSeq = 0;
 let ctxTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -335,7 +345,20 @@ export const useStore = create<Store>((set, get) => ({
       }
       case 'focus': {
         const f = ev.data as Focus;
-        if (f.repo !== repo) break;
+        if (f.repo !== repo) {
+          // Something the agent made for another repository (a demo, a
+          // walkthrough…) would otherwise vanish; offer to switch to it.
+          // Routine focus (opening a file, a graph) stays quiet.
+          const name = s.app?.config.repos.find((r) => r.id === f.repo)?.name;
+          const tab = focusToTab(f);
+          if (name && tab && SHOWN_ELSEWHERE.has(f.view)) {
+            s.toast({
+              kind: 'agent', title: `Agent sent ${articleFor(f.view)} for ${name}`, body: f.title || tab.title,
+              action: { label: `Switch to ${name}`, run: () => void get().setRepo(f.repo).then(() => get().open(tab)) },
+            });
+          }
+          break;
+        }
         const tab = focusToTab(f);
         if (tab && follow) s.open(tab);
         if (f.message) s.toast({ kind: 'agent', title: 'Agent', body: f.message });
@@ -363,6 +386,20 @@ export const useStore = create<Store>((set, get) => ({
       case 'diagram': {
         const d = ev.data as Diagram;
         if (d.repo === repo) set((st) => ({ session: { ...st.session, diagrams: upsert(st.session.diagrams, d) } }));
+        break;
+      }
+      case 'demo': {
+        const d = ev.data as Demo;
+        if (d.repo === repo) set((st) => ({ session: { ...st.session, demos: upsert(st.session.demos ?? [], d) } }));
+        break;
+      }
+      case 'render':
+        // An agent wants a demo step as an image; draw it here and answer.
+        void import('../views/demo/export').then((m) => m.answerRenderRequest(ev.data as RenderRequest));
+        break;
+      case 'animation': {
+        const a = ev.data as Animation;
+        if (a.repo === repo) set((st) => ({ session: { ...st.session, animations: upsert(st.session.animations ?? [], a) } }));
         break;
       }
       case 'explain': {

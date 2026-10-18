@@ -1,10 +1,10 @@
-import { Code2, Flame, GitCompare, LayoutDashboard, Map as MapIcon, Network, Route, Settings, Sparkles, Workflow, X, History, FlaskConical } from 'lucide-react';
+import { Code2, Flame, GitCompare, LayoutDashboard, Map as MapIcon, Network, Route, Settings, Sparkles, Workflow, X, History, FlaskConical, Clapperboard, Film } from 'lucide-react';
 import { useStore } from '../lib/store';
 import type { TabKind } from '../lib/tabs';
 
 const icons: Record<TabKind, typeof Code2> = {
   overview: LayoutDashboard, code: Code2, graph: Network, flow: Workflow, heatmap: Flame, diff: GitCompare,
-  proposal: Sparkles, walkthrough: Route, diagram: MapIcon, settings: Settings, history: History, qa: FlaskConical,
+  proposal: Sparkles, walkthrough: Route, diagram: MapIcon, settings: Settings, history: History, qa: FlaskConical, demo: Clapperboard, animation: Film,
 };
 
 /**
