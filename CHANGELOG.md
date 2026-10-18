@@ -40,6 +40,11 @@ every merged pull request.
   (or the browser UI was open), because the server waited for streaming
   connections that never finish. Shutdown now ends them immediately, and
   coverage runs in progress are stopped so no test processes are left behind.
+- A coverage suite's Folder entered as an absolute path was saved as a
+  nonexistent relative folder, and the run failed with a misleading
+  "fork/exec /usr/bin/sh: no such file or directory". Folders are now
+  normalized (absolute paths inside the repo, `./`, trailing slashes),
+  checked when saved, and checked again before each run.
 
 ## [0.1.0] — 2026-10-16
 

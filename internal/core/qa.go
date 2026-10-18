@@ -103,7 +103,11 @@ func (s *Service) SaveQASuites(rt *RepoHandle, suites []qa.Suite) error {
 	for i := range suites {
 		su := &suites[i]
 		su.Command = strings.TrimSpace(su.Command)
-		su.Dir = strings.Trim(filepath.ToSlash(strings.TrimSpace(su.Dir)), "/")
+		dir, err := suiteDir(rt, su.Dir)
+		if err != nil {
+			return fmt.Errorf("suite %q: %w", su.Name, err)
+		}
+		su.Dir = dir
 		if su.Command == "" {
 			return fmt.Errorf("suite %q has no command", su.Name)
 		}
@@ -114,11 +118,6 @@ func (s *Service) SaveQASuites(rt *RepoHandle, suites []qa.Suite) error {
 			return fmt.Errorf("duplicate suite id %q", su.ID)
 		}
 		seen[su.ID] = true
-		if su.Dir != "" {
-			if _, _, err := rt.ws.Resolve(su.Dir, nil); err != nil {
-				return fmt.Errorf("suite %q: %w", su.Name, err)
-			}
-		}
 	}
 	if err := s.Config.SetSuites(rt.cfg.ID, suites); err != nil {
 		return err
@@ -128,6 +127,40 @@ func (s *Service) SaveQASuites(rt *RepoHandle, suites []qa.Suite) error {
 	}
 	s.emit(EvConfig, s.Config.Get())
 	return nil
+}
+
+// suiteDir normalizes a suite's Folder to a clean repo-relative path ("" for
+// the root) and checks that it is an existing directory inside the
+// repository. Absolute paths are accepted when they point inside the repo,
+// including through symlinks.
+func suiteDir(rt *RepoHandle, dir string) (string, error) {
+	dir = strings.TrimSpace(dir)
+	if dir == "" {
+		return "", nil
+	}
+	if filepath.IsAbs(dir) {
+		abs := filepath.Clean(dir)
+		if real, err := filepath.EvalSymlinks(abs); err == nil {
+			abs = real
+		}
+		rel, err := filepath.Rel(rt.cfg.Path, abs)
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return "", fmt.Errorf("folder %s is outside the repository", dir)
+		}
+		dir = rel
+	}
+	dir = path.Clean(filepath.ToSlash(dir))
+	if dir == "." {
+		return "", nil
+	}
+	abs, rel, err := rt.ws.Resolve(dir, nil)
+	if err != nil {
+		return "", fmt.Errorf("folder %s: %w", dir, err)
+	}
+	if st, err := os.Stat(abs); err != nil || !st.IsDir() {
+		return "", fmt.Errorf("folder %s doesn't exist in the repository", dir)
+	}
+	return rel, nil
 }
 
 // ResetQASuites drops the developer's suites so detected defaults apply.
@@ -479,6 +512,13 @@ func (s *Service) runSuites(ctx context.Context, cancel context.CancelFunc, rt *
 		dir, _, err := rt.ws.Resolve(su.Dir, nil)
 		if su.Dir == "" {
 			dir, err = rt.cfg.Path, nil
+		}
+		if err == nil {
+			// A missing working directory would otherwise surface as the
+			// misleading "fork/exec /usr/bin/sh: no such file or directory".
+			if st, serr := os.Stat(dir); serr != nil || !st.IsDir() {
+				err = fmt.Errorf("suite folder %q doesn't exist; fix it in the Suites panel", su.Dir)
+			}
 		}
 		out := filepath.Join(s.CacheDir, "runs", rt.cfg.ID, safeName(su.ID))
 		if err == nil {

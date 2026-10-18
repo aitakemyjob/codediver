@@ -250,6 +250,62 @@ func TestStopCoverageRunsOnExit(t *testing.T) {
 	s.StopCoverageRuns(time.Second) // no runs: returns immediately
 }
 
+func TestQASuiteFolders(t *testing.T) {
+	s, rt, dir := qaRepo(t)
+	save := func(folder string) (string, error) {
+		err := s.SaveQASuites(rt, []qa.Suite{{ID: "x", Name: "X", Command: "true", Dir: folder}})
+		r, _ := s.Repo(rt.ID())
+		got, _ := s.QASuites(r)
+		return got[0].Dir, err
+	}
+	cases := map[string]string{
+		"":                              "",
+		".":                             "",
+		"api":                           "api",
+		"./api":                         "api",
+		"api/":                          "api",
+		filepath.Join(dir, "api"):       "api", // absolute, inside the repo
+		filepath.Join(dir, "api") + "/": "api",
+		dir:                             "",
+	}
+	for in, want := range cases {
+		if got, err := save(in); err != nil || got != want {
+			t.Errorf("Folder %q saved as %q (%v), want %q", in, got, err, want)
+		}
+	}
+	// A symlink to the repo resolves to the same folder.
+	link := filepath.Join(t.TempDir(), "repo-link")
+	if err := os.Symlink(dir, link); err == nil {
+		if got, err := save(filepath.Join(link, "api")); err != nil || got != "api" {
+			t.Errorf("symlinked folder saved as %q (%v)", got, err)
+		}
+	}
+	for _, bad := range []string{"missing", "api/api.go", t.TempDir(), "../.."} {
+		if _, err := save(bad); err == nil {
+			t.Errorf("Folder %q should be rejected", bad)
+		}
+	}
+}
+
+func TestQARunReportsMissingFolder(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("suite command uses sh")
+	}
+	s, rt, dir := qaRepo(t)
+	testutil.Must(t, s.SaveQASuites(rt, []qa.Suite{{ID: "x", Name: "Web", Enabled: true, Dir: "web", Command: "true", Report: "{out}/r"}}))
+	rt, _ = s.Repo(rt.ID())
+	testutil.Must(t, os.RemoveAll(filepath.Join(dir, "web"))) // deleted after it was configured
+	if _, err := s.RunCoverage(rt, nil); err != nil {
+		t.Fatal(err)
+	}
+	for s.LastRun(rt).State == "running" {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if last := s.LastRun(rt); last.Suites[0].State != "error" || !strings.Contains(last.Suites[0].Error, `suite folder "web" doesn't exist`) {
+		t.Fatalf("run = %+v", last.Suites[0])
+	}
+}
+
 func TestQASuiteValidation(t *testing.T) {
 	s, rt, _ := qaRepo(t)
 	if err := s.SaveQASuites(rt, []qa.Suite{{Name: "empty"}}); err == nil {
