@@ -26,6 +26,8 @@ every merged pull request.
   `find_test_gaps` and `show_test_plan`.
 
 ### Fixed
+- Arrow keys in a walkthrough could throw an error when the key event
+  didn't come from a page element.
 - Clicking the first commit of a repository in History failed with "unknown
   revision"; it now shows everything that commit added. The per-file History
   view shows errors instead of spinning forever. Agents can request a single
