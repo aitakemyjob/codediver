@@ -5,7 +5,7 @@
 <h1 align="center">CodeDiver</h1>
 
 <p align="center">
-  <b>Visual code exploration for developers — and the AI agents helping them.</b>
+  <b>Build with your AI agent, side by side.</b>
 </p>
 
 <p align="center">
@@ -17,14 +17,17 @@
   <a href="https://www.bestpractices.dev/projects/15641"><img src="https://www.bestpractices.dev/projects/15641/badge" alt="OpenSSF Best Practices" /></a>
 </p>
 
-CodeDiver is a desktop app that turns a repository into things you can *see*:
-call graphs, "how does execution get here?" traces, control-flow graphs of a
-single function with its inputs and outputs, dependency maps, type diagrams,
-heatmaps of churn, complexity and change, and a QA view of what your tests
-actually cover. It ships a built-in
-[MCP](https://modelcontextprotocol.io) server, so Claude Code, Cursor, VS Code
-and other agents can drive the UI while they explain code to you — and
-propose changes you review visually before anything touches disk.
+CodeDiver is a desktop workspace you share with your AI coding agent. Through
+its built-in [MCP](https://modelcontextprotocol.io) server, Claude Code,
+Cursor, VS Code and other agents see the code you have open and show you what
+they mean on your screen: guided walkthroughs, animated demos of how a request
+flows, call graphs and "how does execution get here?" traces, control-flow
+graphs, and a QA view of what your tests actually cover. Every change the
+agent wants to make arrives as a proposal you review visually before anything
+touches disk.
+
+You can explore the same views yourself: dependency maps, type diagrams, and
+heatmaps of churn, complexity and change.
 
 ## Features
 
@@ -38,7 +41,8 @@ propose changes you review visually before anything touches disk.
 | **Heatmaps** | Treemap of the repo by churn, working-tree diff, pending agent proposals, complexity, agent attention, size or uncovered lines, with per-function drill-down. |
 | **Visual review** | Git diffs (working tree, staged, any two refs) mapped to the functions they touch, plus a blast-radius graph of affected callers. |
 | **Agent proposals** | Agents submit edits; you get side-by-side diffs, a heatmap and an impact graph, then accept or reject per file with feedback. |
-| **Walkthroughs & diagrams** | Agents present guided code tours and Mermaid or interactive diagrams whose nodes link to code. |
+| **Walkthroughs & diagrams** | Agents present guided code tours, including "walk me through this change" tours of a diff, and Mermaid or interactive diagrams whose nodes link to code. |
+| **Demos & animations** | Agents play animated, step-by-step demos: architectures with nested regions, icons and color-coded paths, or execution trees from the real call graph, with packets moving along the routes and values changing as you step. Free-form animations run sandboxed. Export any step as PNG or SVG, or the whole demo as a PDF. |
 | **Themes** | Deep Dive (default), Abyss, Obsidian, Tokyo Night, Nord, Dracula, Gruvbox, Synthwave, Paper and Solarized Light. |
 
 ### Language support
