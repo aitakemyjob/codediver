@@ -150,7 +150,9 @@ func runServe(port int, add string, open bool) error {
 	<-ctx.Done()
 	shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	return a.server.Shutdown(shutdown)
+	err = a.server.Shutdown(shutdown)
+	a.core.StopCoverageRuns(2 * time.Second)
+	return err
 }
 
 // openBrowser opens url in the default browser (best effort).

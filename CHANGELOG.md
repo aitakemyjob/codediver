@@ -36,6 +36,10 @@ every merged pull request.
   (`0.1.0~rc.2` < `0.1.0`).
 - The Claude Code connection command now uses `--scope user`, so CodeDiver is
   available in every project instead of only the folder where it was added.
+- Quitting the desktop app could hang while an agent was connected over MCP
+  (or the browser UI was open), because the server waited for streaming
+  connections that never finish. Shutdown now ends them immediately, and
+  coverage runs in progress are stopped so no test processes are left behind.
 
 ## [0.1.0] — 2026-10-16
 

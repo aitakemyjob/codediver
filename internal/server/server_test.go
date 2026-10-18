@@ -168,3 +168,48 @@ func TestMCPOverHTTP(t *testing.T) {
 		t.Errorf("result = %s", txt)
 	}
 }
+
+// Quitting must not hang while clients hold streaming connections open: an
+// agent's MCP session and the browser UI's event stream never finish on
+// their own. The desktop app shuts down with a context that has no deadline.
+func TestShutdownWithOpenStreams(t *testing.T) {
+	store, err := config.Open(filepath.Join(t.TempDir(), "c.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := core.New(store, "test")
+	srv := New(svc, api.New(svc), Options{UI: fstest.MapFS{"index.html": {Data: []byte("x")}}})
+	if err := srv.Start(); err != nil {
+		t.Fatal(err)
+	}
+
+	// Browser UI event stream.
+	req, _ := http.NewRequest(http.MethodGet, srv.URL()+"/api/events", nil)
+	req.Header.Set(HeaderName, "1")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if _, err := bufio.NewReader(resp.Body).ReadString('\n'); err != nil {
+		t.Fatal(err)
+	}
+	// Agent session with its standalone server-to-client stream.
+	client := mcp.NewClient(&mcp.Implementation{Name: "agent", Version: "1"}, nil)
+	cs, err := client.Connect(context.Background(), &mcp.StreamableClientTransport{Endpoint: srv.URL() + "/mcp"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cs.Close()
+
+	done := make(chan error, 1)
+	go func() { done <- srv.Shutdown(context.Background()) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Shutdown hung with open streaming connections")
+	}
+	if svc.MCPStatus().Running {
+		t.Error("MCP should be marked stopped")
+	}
+}
