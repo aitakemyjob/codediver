@@ -8,14 +8,11 @@ every merged pull request.
 
 ## [Unreleased]
 
-### Added
-- Linting in CI (golangci-lint, ESLint), dependency vulnerability checks
-  (govulncheck, npm audit), CodeQL and OpenSSF Scorecard.
-- Release builds ship an SPDX SBOM and signed build provenance; verify a
-  download with `gh attestation verify <file> --repo aitakemyjob/codediver`.
-- Roadmap, release-note categories, automatic PR labels and DCO sign-off.
+### Fixed
+- Arrow keys in a walkthrough could throw an error when the key event
+  didn't come from a page element.
 
-## [0.1.1] — unreleased (0.1.1-rc.1 available)
+## [0.1.1] — 2026-10-17
 
 ### Added
 - **QA view:** line coverage from Go, LCOV, Cobertura and JaCoCo reports or
@@ -24,10 +21,13 @@ every merged pull request.
   gutter; an "uncovered" heatmap.
 - MCP tools `get_test_overview`, `get_coverage`, `get_tests_for`,
   `find_test_gaps` and `show_test_plan`.
+- Linting in CI (golangci-lint, ESLint), dependency vulnerability checks
+  (govulncheck, npm audit), CodeQL and OpenSSF Scorecard.
+- Release builds ship an SPDX SBOM and signed build provenance; verify a
+  download with `gh attestation verify <file> --repo aitakemyjob/codediver`.
+- Roadmap, release-note categories, automatic PR labels and DCO sign-off.
 
 ### Fixed
-- Arrow keys in a walkthrough could throw an error when the key event
-  didn't come from a page element.
 - Clicking the first commit of a repository in History failed with "unknown
   revision"; it now shows everything that commit added. The per-file History
   view shows errors instead of spinning forever. Agents can request a single
@@ -58,6 +58,6 @@ walkthroughs, function logic, trace-to-here, call and dependency graphs,
 heatmaps, visual review of agent proposals, ten themes, and installers for
 macOS, Windows and Linux plus a headless server.
 
-[Unreleased]: https://github.com/aitakemyjob/codediver/compare/v0.1.1-rc.1...HEAD
-[0.1.1]: https://github.com/aitakemyjob/codediver/compare/v0.1.0...v0.1.1-rc.1
+[Unreleased]: https://github.com/aitakemyjob/codediver/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/aitakemyjob/codediver/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/aitakemyjob/codediver/releases/tag/v0.1.0
