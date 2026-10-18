@@ -14,6 +14,7 @@
   <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Windows%20%7C%20Linux-4fc3f7" alt="Platforms" />
   <a href="LICENSE"><img src="https://img.shields.io/github/license/aitakemyjob/codediver" alt="MIT license" /></a>
   <a href="https://scorecard.dev/viewer/?uri=github.com/aitakemyjob/codediver"><img src="https://api.scorecard.dev/projects/github.com/aitakemyjob/codediver/badge" alt="OpenSSF Scorecard" /></a>
+  <a href="https://www.bestpractices.dev/projects/15641"><img src="https://www.bestpractices.dev/projects/15641/badge" alt="OpenSSF Best Practices" /></a>
 </p>
 
 CodeDiver is a desktop app that turns a repository into things you can *see*:
