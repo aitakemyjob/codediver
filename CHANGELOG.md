@@ -24,6 +24,8 @@ every merged pull request.
   switch to it.
 
 ### Fixed
+- Opening a file with no covered lines (from the Uncovered heatmap, say)
+  showed a view error ("null is not an object") instead of the code.
 - The install scripts now print the Claude Code connection command with
   `--scope user`, matching the app, so CodeDiver is available in every
   project.

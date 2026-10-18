@@ -47,6 +47,16 @@ func TestParseGoProfilePartialLine(t *testing.T) {
 	}
 }
 
+func TestLinesAreNeverNil(t *testing.T) {
+	// b.go never ran: its covered and partial lists must be empty, not nil,
+	// or they reach the editor as null.
+	raw, _ := Parse([]byte("mode: set\nm/b.go:1.1,2.2 1 0\n"))
+	cov, unc, part := raw.Files["m/b.go"].Lines()
+	if cov == nil || part == nil || !reflect.DeepEqual(unc, []int{1, 2}) {
+		t.Fatalf("lines = %#v %#v %#v", cov, unc, part)
+	}
+}
+
 func TestParseLCOV(t *testing.T) {
 	data := `TN:
 SF:src/menu.ts

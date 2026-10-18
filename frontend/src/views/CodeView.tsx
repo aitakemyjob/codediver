@@ -260,12 +260,12 @@ export default function CodeView({ tab, active }: ViewProps) {
       return;
     }
     const n = model.getLineCount();
-    const partial = new Set(coverage.partial);
+    const partial = new Set(coverage.partial ?? []);
     const deco: monaco.editor.IModelDeltaDecoration[] = [];
-    for (const ln of coverage.covered) {
+    for (const ln of coverage.covered ?? []) {
       if (ln <= n) deco.push({ range: new monaco.Range(ln, 1, ln, 1), options: { isWholeLine: true, linesDecorationsClassName: partial.has(ln) ? 'gd-cov-part' : 'gd-cov-hit' } });
     }
-    for (const ln of coverage.uncovered) {
+    for (const ln of coverage.uncovered ?? []) {
       if (ln <= n) deco.push({ range: new monaco.Range(ln, 1, ln, 1), options: { isWholeLine: true, className: 'gd-cov-miss-line', linesDecorationsClassName: 'gd-cov-miss' } });
     }
     covRef.current?.set(deco);
