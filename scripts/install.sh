@@ -92,4 +92,4 @@ case ":$PATH:" in
   *":$PREFIX/bin:"*) ;;
   *) say "add $PREFIX/bin to your PATH to use the \`codediver\` command" ;;
 esac
-say "connect Claude Code:  claude mcp add --transport http codediver http://127.0.0.1:47474/mcp"
+say "connect Claude Code:  claude mcp add --transport http --scope user codediver http://127.0.0.1:47474/mcp"

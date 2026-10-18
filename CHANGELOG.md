@@ -24,6 +24,9 @@ every merged pull request.
   switch to it.
 
 ### Fixed
+- The install scripts now print the Claude Code connection command with
+  `--scope user`, matching the app, so CodeDiver is available in every
+  project.
 - **Sandbox:** on macOS and Windows, agents could read files hidden from
   them by using another spelling of the name: different case (`.ENV`,
   `.GIT/config`), a trailing dot or space, or a Windows data stream

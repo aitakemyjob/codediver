@@ -15,6 +15,6 @@
     "productName": "CodeDiver",
     "productVersion": "0.1.0",
     "copyright": "Copyright © CodeDiver contributors",
-    "comments": "Visual code exploration with a built-in MCP server for coding agents"
+    "comments": "A workspace you share with your AI coding agent, with a built-in MCP server"
   }
 }

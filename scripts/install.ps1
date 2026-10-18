@@ -29,4 +29,4 @@ Write-Host '==> running installer' -ForegroundColor Cyan
 Start-Process -FilePath $tmp -Wait
 Remove-Item $tmp -ErrorAction SilentlyContinue
 Write-Host '==> done. Connect Claude Code with:' -ForegroundColor Cyan
-Write-Host '    claude mcp add --transport http codediver http://127.0.0.1:47474/mcp'
+Write-Host '    claude mcp add --transport http --scope user codediver http://127.0.0.1:47474/mcp'

@@ -142,7 +142,7 @@ func runGUI(port int, add string) error {
 			TitleBar:             mac.TitleBarHiddenInset(),
 			Appearance:           mac.DefaultAppearance,
 			WebviewIsTransparent: false,
-			About:                &mac.AboutInfo{Title: "CodeDiver", Message: "Visual code exploration for humans and agents. " + version},
+			About:                &mac.AboutInfo{Title: "CodeDiver", Message: "Build with your AI agent, side by side. " + version},
 		},
 		Windows: &windows.Options{
 			WebviewIsTransparent: false,
