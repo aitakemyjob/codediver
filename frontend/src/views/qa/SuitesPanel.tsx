@@ -66,7 +66,7 @@ export function SuitesPanel({ suites, detected, onClose, onShowLog }: { suites: 
             </div>
             <label className="suite-field">
               <span>Folder</span>
-              <input className="input mono" placeholder="(repository root)" value={su.dir} onChange={(e) => update(i, { dir: e.target.value })} />
+              <input className="input mono" placeholder="repository root, or a subfolder such as frontend" title="A folder inside the repository: relative (frontend) or absolute" value={su.dir} onChange={(e) => update(i, { dir: e.target.value })} />
             </label>
             <label className="suite-field">
               <span>Command</span>
