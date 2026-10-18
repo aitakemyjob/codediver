@@ -107,8 +107,10 @@ func runGUI(port int, add string) error {
 		BackgroundColour: bg,
 		AssetServer:      &assetserver.Options{Assets: assets},
 		OnStartup:        desk.startup,
-		OnShutdown: func(ctx context.Context) {
-			a.server.Shutdown(ctx)
+		OnShutdown: func(context.Context) {
+			// Wails' context never expires; Shutdown bounds its own wait.
+			_ = a.server.Shutdown(context.Background())
+			a.core.StopCoverageRuns(2 * time.Second)
 		},
 		Bind: []interface{}{desk},
 		Mac: &mac.Options{

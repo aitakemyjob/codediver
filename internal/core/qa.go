@@ -587,6 +587,30 @@ func (s *Service) CancelCoverage(rt *RepoHandle) {
 	}
 }
 
+// StopCoverageRuns cancels every running coverage run (killing the test
+// processes they started) and waits up to grace for them to wind down. It
+// is called when CodeDiver exits so no test processes are left behind.
+func (s *Service) StopCoverageRuns(grace time.Duration) {
+	s.mu.Lock()
+	handles := make([]*RepoHandle, 0, len(s.repos))
+	for _, rt := range s.repos {
+		handles = append(handles, rt)
+	}
+	s.mu.Unlock()
+	for _, rt := range handles {
+		s.CancelCoverage(rt)
+	}
+	deadline := time.Now().Add(grace)
+	for _, rt := range handles {
+		for time.Now().Before(deadline) {
+			if r := s.LastRun(rt); r == nil || r.State != "running" {
+				break
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
+	}
+}
+
 // LastRun returns the most recent coverage run including its log.
 func (s *Service) LastRun(rt *RepoHandle) *QARun {
 	rt.qa.mu.Lock()

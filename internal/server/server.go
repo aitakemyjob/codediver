@@ -39,7 +39,14 @@ type Server struct {
 	opts Options
 	http *http.Server
 	ln   net.Listener
+	// stopStreams cancels the base context of every request, ending
+	// long-lived streams (agent MCP sessions, the UI event stream).
+	stopStreams context.CancelFunc
 }
+
+// shutdownGrace bounds how long Shutdown waits when its context has no
+// deadline (the desktop app passes one that never expires).
+const shutdownGrace = 3 * time.Second
 
 // New creates the HTTP server; the MCP endpoint is always served and the
 // UI/API only when opts.UI is set.
@@ -197,7 +204,13 @@ func (s *Server) Start() error {
 		return err
 	}
 	s.ln = ln
-	s.http = &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	base, stop := context.WithCancel(context.Background())
+	s.stopStreams = stop
+	s.http = &http.Server{
+		Handler:           s.Handler(),
+		ReadHeaderTimeout: 10 * time.Second,
+		BaseContext:       func(net.Listener) context.Context { return base },
+	}
 	url := "http://" + ln.Addr().String()
 	s.core.SetMCPStatus(core.MCPStatus{Running: true, URL: url + "/mcp"})
 	go func() {
@@ -217,11 +230,23 @@ func (s *Server) URL() string {
 	return "http://" + s.ln.Addr().String()
 }
 
-// Shutdown stops the server gracefully and marks MCP as stopped.
+// Shutdown stops the server and marks MCP as stopped. Streaming requests
+// are cancelled first, since they never finish on their own; whatever is
+// still open after the grace period is closed forcibly.
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.http == nil {
 		return nil
 	}
 	s.core.SetMCPStatus(core.MCPStatus{})
-	return s.http.Shutdown(ctx)
+	s.stopStreams()
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, shutdownGrace)
+		defer cancel()
+	}
+	if err := s.http.Shutdown(ctx); err != nil {
+		_ = s.http.Close()
+		return err
+	}
+	return nil
 }

@@ -229,6 +229,27 @@ func TestQARunReportsMissingReport(t *testing.T) {
 	}
 }
 
+func TestStopCoverageRunsOnExit(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("suite command uses sh")
+	}
+	s, rt, _ := qaRepo(t)
+	testutil.Must(t, s.SaveQASuites(rt, []qa.Suite{{ID: "slow", Name: "Slow", Enabled: true, Command: "sleep 30", Report: "{out}/none"}}))
+	rt, _ = s.Repo(rt.ID())
+	if _, err := s.RunCoverage(rt, nil); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	s.StopCoverageRuns(5 * time.Second)
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("stopping took %v", time.Since(start))
+	}
+	if last := s.LastRun(rt); last.State != "cancelled" {
+		t.Fatalf("run state = %s", last.State)
+	}
+	s.StopCoverageRuns(time.Second) // no runs: returns immediately
+}
+
 func TestQASuiteValidation(t *testing.T) {
 	s, rt, _ := qaRepo(t)
 	if err := s.SaveQASuites(rt, []qa.Suite{{Name: "empty"}}); err == nil {
