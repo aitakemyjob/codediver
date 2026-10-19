@@ -759,6 +759,10 @@ func (s *Service) qaAnalyze(ctx context.Context, rt *RepoHandle) (*qaAnalysis, e
 		if !workspace.IsCode(lang) {
 			continue
 		}
+		// Tests of fixtures and example projects aren't this project's tests.
+		if qa.InTestdata(f) {
+			continue
+		}
 		named := qa.IsTestFile(f)
 		if !named && !strings.HasSuffix(f, ".rs") {
 			continue

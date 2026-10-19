@@ -15,7 +15,7 @@ ifeq ($(shell uname -s),Linux)
   WAILS_TAGS := -tags webkit2_41
 endif
 
-.PHONY: help tools deps frontend test test-go test-frontend vet lint vuln build package headless headless-all serve dev icon release clean
+.PHONY: help tools deps frontend test test-go test-frontend vet lint vuln build package headless headless-all serve example dev icon release clean
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -64,6 +64,9 @@ headless-all: ## Headless binaries for every OS/arch → dist/
 
 serve: headless ## Run the browser UI against your config
 	./build/bin/codediver-headless serve
+
+example: ## Copy an example project into a scratch git repo: make example NAME=go-service
+	@scripts/example.sh $(NAME)
 
 dev: ## Wails dev mode with hot reload
 	$(WAILS) dev $(WAILS_TAGS)

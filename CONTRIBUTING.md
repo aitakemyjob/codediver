@@ -70,12 +70,20 @@ headless binary (`make headless`), run `codediver serve`, and run the Vite dev
 server (`cd frontend && npm run dev`); it proxies `/api` and `/mcp` to
 `127.0.0.1:47474`.
 
+To try a feature on a realistic project, use the examples in
+[`testdata/examples`](testdata/examples): `make example NAME=go-service`
+(or `ts-react`, `python-api`) gives you a scratch git repository with
+history, coverage and a pending change.
+
 ## Conventions
 
 - **Go:** `make lint` clean (golangci-lint, configured in `.golangci.yml`). Business logic belongs in
   `internal/core`; `api` and `mcpserver` stay thin. All file access goes
   through `workspace`. Prefer table-driven tests; integration tests build a
-  throwaway repo with `internal/testutil`.
+  throwaway repo with `internal/testutil`. Language support is pinned
+  against the example projects in `internal/core/examples_test.go`; when
+  analysis changes what they show, update the support matrix in
+  `testdata/examples/README.md`.
 - **TypeScript:** strict mode, `npm run lint` (ESLint) clean with no warnings. Keep pure logic in `src/lib`
   with `*.test.ts` beside it; views consume the store and `api`.
 - **Documentation:** every Go function and method has a doc comment that
