@@ -77,8 +77,32 @@ What CodeDiver finds in these examples today (pinned by the tests):
 
 ## Regenerating coverage
 
-The reports are committed so the QA view works without the toolchains.
-After changing an example, regenerate its report from its folder:
+The reports are committed so the QA view, the demo script and
+`go test ./internal/core -run Example` work without these toolchains. You
+only need a toolchain to regenerate an example's report after changing it.
+
+### Toolchains
+
+| Example | Toolchain | Test and coverage tools | Versions the committed reports came from |
+|---|---|---|---|
+| go-service | [Go](https://go.dev/dl/) 1.22+ (the module's minimum) | built in: `go test -coverprofile` | Go 1.26.9 |
+| ts-react | [Node.js](https://nodejs.org) 20+ with npm | Vitest and `@vitest/coverage-v8` (pinned in `package.json`; `npm install` fetches them) | Node 24.21, npm 11.19, Vitest 3.2.4 |
+| python-api | Python 3.9+ (uses `dict[...]` and `tuple[...]` annotations) | pytest, pytest-cov and coverage.py (pinned in `requirements-dev.txt`) | Python 3.12.3, pytest 8.3.3, pytest-cov 5.0.0, coverage 7.16.2 |
+| java-maven | JDK 17+ and [Maven](https://maven.apache.org/download.cgi) 3.9+ | JUnit 5 and the JaCoCo Maven plugin (in `pom.xml`) | JDK 25, JUnit 5.11.3, JaCoCo 0.8.12* |
+| polyglot-monorepo | Go, Node.js and Python as above | as above, per component | as above |
+
+\* Generated without Maven: compiled with `javac --release 17`, run with
+the JUnit console launcher (`junit-platform-console-standalone` 1.11.3)
+under the JaCoCo agent, reported with the JaCoCo CLI (`report … --xml`).
+Running Maven gives the same report.
+
+Use a virtual environment for Python (`python -m venv .venv`) and don't
+commit it, `node_modules`, `__pycache__`, `.coverage`, or anything in
+`target/` except `site/jacoco/jacoco.xml`.
+
+### Commands
+
+From the example's folder:
 
 | Example | Command |
 |---|---|
