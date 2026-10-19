@@ -3,7 +3,9 @@ package core
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -106,6 +108,20 @@ var examples = []exampleCase{
 		hardToTest: "send", hints: []string{"env", "clock", "network"},
 		validate: "validate", file: "orders/order.py", edit: proposals.Edit{Old: "if o.qty > 1000:", New: "if o.qty > 500:"}, caller: "create_order",
 	},
+	{
+		name: "java-maven", framework: "junit", tests: 4, covFiles: 5,
+		funcs: map[string]fnExpect{
+			"Orders.validate":       {cover: "partial", tested: true, callers: 2},
+			"Orders.total":          {cover: "full", tested: true, callers: 2},
+			"Orders.unitPrice":      {cover: "partial", tested: true, callers: 1},
+			"Orders.legacyTotal":    {cover: "0", callers: 0},
+			"OrderHandler.getOrder": {cover: "0", callers: 0},
+			// The test lives in the mirrored package under src/test/java.
+			"MemoryStore.save": {cover: "full", tested: true, callers: 2},
+		},
+		hardToTest: "Notifier.send", hints: []string{"env", "clock", "network"},
+		validate: "Orders.validate", file: "src/main/java/com/example/orders/Orders.java", edit: proposals.Edit{Old: "if (o.qty() > 1000) {", New: "if (o.qty() > 500) {"}, caller: "OrderHandler.createOrder",
+	},
 }
 
 func TestExamples(t *testing.T) {
@@ -196,6 +212,64 @@ func TestExamples(t *testing.T) {
 	}
 }
 
+func TestExampleMonorepo(t *testing.T) {
+	s, rt := openExample(t, "polyglot-monorepo")
+	ctx := context.Background()
+	// One suite per component, each with its committed report merged.
+	suites, _ := s.QASuites(rt)
+	var dirs []string
+	for _, su := range suites {
+		dirs = append(dirs, su.Tool+":"+su.Dir)
+	}
+	if strings.Join(dirs, ",") != "pytest:jobs,go:services/billing,vitest:web" {
+		t.Errorf("suites = %v", dirs)
+	}
+	ov, err := s.QAOverview(ctx, rt, 50)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ov.Coverage == nil || len(ov.Coverage.Sources) != 3 {
+		t.Fatalf("coverage = %+v", ov.Coverage)
+	}
+	for _, fw := range []string{"go test", "vitest", "pytest"} {
+		if ov.Tests.Frameworks[fw] != 1 {
+			t.Errorf("tests = %+v", ov.Tests.Frameworks)
+		}
+	}
+	a, err := s.qaAnalyze(ctx, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range a.funcs {
+		switch f.Name {
+		case "dollars": // called inside a template literal
+			if f.Callers != 1 || f.Indirect != 1 {
+				t.Errorf("dollars = %+v", f)
+			}
+		case "applyTax", "_is_late": // reached only through a caller
+			if f.Direct != 0 || f.Indirect != 1 || f.Pct <= 0 {
+				t.Errorf("%s = %+v", f.Name, f)
+			}
+		}
+	}
+	gaps, _, err := s.TestGaps(ctx, rt, "", 30)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hints := map[string][]string{}
+	for _, g := range gaps {
+		for _, h := range g.Hints {
+			hints[g.Name] = append(hints[g.Name], h.Kind)
+		}
+	}
+	if got := strings.Join(hints["send_reminders"], ","); !strings.Contains(got, "network") || !strings.Contains(got, "clock") {
+		t.Errorf("send_reminders hints = %v", got)
+	}
+	if got := strings.Join(hints["fetchInvoices"], ","); !strings.Contains(got, "network") {
+		t.Errorf("fetchInvoices hints = %v", got)
+	}
+}
+
 // TestExampleKnownGaps pins analysis gaps the examples expose, so the
 // README's support matrix stays honest. When one of these fails because
 // analysis got better, update the matrix and move the check above.
@@ -211,6 +285,41 @@ func TestExampleKnownGaps(t *testing.T) {
 		if f.Name == "App" && f.Callers != 0 {
 			t.Errorf("App callers = %d: module-level code now counts as a caller; update the support matrix", f.Callers)
 		}
+	}
+}
+
+func TestExampleScript(t *testing.T) {
+	needGit(t)
+	if testing.Short() {
+		t.Skip("runs the demo script")
+	}
+	dest := filepath.Join(t.TempDir(), "demo")
+	script, err := filepath.Abs(filepath.Join("..", "..", "scripts", "example.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command("sh", script, "polyglot-monorepo", dest)
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", strings.TrimSuffix(script, ".sh")+".ps1", "polyglot-monorepo", dest)
+	}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	git := func(args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", dest}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return string(out)
+	}
+	if log := git("log", "--format=%s"); log != "Add US sales tax\nInitial billing system\n" {
+		t.Errorf("log = %q", log)
+	}
+	if st := git("status", "--short"); st != " M services/billing/invoice/invoice.go\n M web/src/invoices.ts\n" {
+		t.Errorf("status = %q", st)
+	}
+	if _, err := os.Stat(filepath.Join(dest, ".demo")); !os.IsNotExist(err) {
+		t.Error(".demo should not be copied")
 	}
 }
 

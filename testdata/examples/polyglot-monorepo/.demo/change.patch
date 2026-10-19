@@ -1,0 +1,22 @@
+--- a/services/billing/invoice/invoice.go
++++ b/services/billing/invoice/invoice.go
+@@ -27,7 +27,7 @@
+ func applyTax(inv Invoice) int {
+ 	switch inv.Region {
+ 	case "EU":
+-		return inv.Cents * 20 / 100
++		return inv.Cents * 21 / 100
+ 	case "US":
+ 		return inv.Cents * 8 / 100
+ 	}
+--- a/web/src/invoices.ts
++++ b/web/src/invoices.ts
+@@ -10,7 +10,7 @@
+ 
+ /** One line of the invoice list. */
+ export function formatInvoice(inv: Invoice): string {
+-  if (inv.void) return `${inv.id} (void)`;
++  if (inv.void) return `${inv.id} (void, nothing due)`;
+   return `${inv.id} ${inv.customer} ${dollars(inv.cents)}`;
+ }
+ 

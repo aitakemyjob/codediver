@@ -25,12 +25,20 @@ mkdir -p "$dest"
 cd "$dest"
 git init -q
 commit() { git add -A && git -c user.name="CodeDiver Example" -c user.email="example@codediver.app" commit -q -m "$1"; }
+# .demo/commits names the two commits, one per line.
+first="Initial order service"
+second="Reject orders over 1000 items"
+if [ -f "$examples/$name/.demo/commits" ]; then
+	first=$(sed -n 1p "$examples/$name/.demo/commits")
+	second=$(sed -n 2p "$examples/$name/.demo/commits")
+fi
 git apply -R "$examples/$name/.demo/history.patch"
-commit "Initial order service"
+commit "$first"
 git apply "$examples/$name/.demo/history.patch"
-commit "Reject orders over 1000 items"
+commit "$second"
 git apply "$examples/$name/.demo/change.patch"
 
 echo "Example $name is ready in $dest"
-echo "  2 commits, plus an uncommitted change to validate."
+echo "  2 commits, plus an uncommitted change:"
+git status --short | sed 's/^/   /'
 echo "  Open it in CodeDiver:  codediver --add $dest   (or: codediver serve --add $dest)"

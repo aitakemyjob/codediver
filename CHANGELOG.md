@@ -24,6 +24,9 @@ every merged pull request.
   switch to it.
 
 ### Fixed
+- **Java / Kotlin:** tests in `src/test/java/…` are now mapped to the code
+  they call in the mirrored `src/main/java/…` package, so methods called
+  on local variables (`store.save(…)`) count as tested.
 - **TypeScript / JavaScript:** a function with destructured parameters
   (`function Card({ title }: Props)`) or an object return type was taken
   to end on its first line, so calls in its body were missed. Arrow
