@@ -995,7 +995,13 @@ func pickTargets(testFile string, c qa.Call, cands []*analysis.Symbol, imports m
 	if path.Base(dir) == "__tests__" || path.Base(dir) == "tests" || path.Base(dir) == "test" {
 		dir = path.Dir(dir)
 	}
-	if got := filter(func(s *analysis.Symbol) bool { return path.Dir(s.File) == dir }); len(got) > 0 {
+	// Maven and Gradle tests mirror the package they test:
+	// src/test/java/com/x tests src/main/java/com/x.
+	mirror := ""
+	if i := strings.Index(dir, "src/test/"); i >= 0 && (i == 0 || dir[i-1] == '/') {
+		mirror = dir[:i] + "src/main/" + dir[i+len("src/test/"):]
+	}
+	if got := filter(func(s *analysis.Symbol) bool { d := path.Dir(s.File); return d == dir || d == mirror }); len(got) > 0 {
 		return got
 	}
 	if got := filter(func(s *analysis.Symbol) bool {

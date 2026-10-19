@@ -72,7 +72,8 @@ server (`cd frontend && npm run dev`); it proxies `/api` and `/mcp` to
 
 To try a feature on a realistic project, use the examples in
 [`testdata/examples`](testdata/examples): `make example NAME=go-service`
-(or `ts-react`, `python-api`) gives you a scratch git repository with
+(or `ts-react`, `python-api`, `java-maven`, `polyglot-monorepo`; on Windows
+`scripts\example.ps1`) gives you a scratch git repository with
 history, coverage and a pending change.
 
 ## Conventions

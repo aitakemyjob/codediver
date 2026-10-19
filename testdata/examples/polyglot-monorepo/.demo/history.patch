@@ -1,0 +1,11 @@
+--- a/services/billing/invoice/invoice.go
++++ b/services/billing/invoice/invoice.go
+@@ -28,6 +28,8 @@
+ 	switch inv.Region {
+ 	case "EU":
+ 		return inv.Cents * 20 / 100
++	case "US":
++		return inv.Cents * 8 / 100
+ 	}
+ 	return 0
+ }

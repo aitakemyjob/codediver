@@ -1,0 +1,13 @@
+--- a/src/main/java/com/example/orders/Orders.java
++++ b/src/main/java/com/example/orders/Orders.java
+@@ -14,8 +14,8 @@
+         if (o.sku() == null || o.sku().isEmpty()) {
+             return "sku is required";
+         }
+-        if (o.qty() > 1000) {
+-            return "quantity is over the limit of 1000";
++        if (o.qty() > 500) {
++            return "quantity is over the limit of 500";
+         }
+         return null;
+     }
