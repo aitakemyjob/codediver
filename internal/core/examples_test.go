@@ -80,11 +80,14 @@ var examples = []exampleCase{
 	{
 		name: "ts-react", framework: "vitest", tests: 3, covFiles: 6,
 		funcs: map[string]fnExpect{
-			"validate":    {cover: "partial", tested: true, callers: 1},
-			"total":       {cover: "full", tested: true, callers: -1},
+			"validate":    {cover: "partial", tested: true, callers: 1}, // from OrderForm's submit
+			"total":       {cover: "full", tested: true, callers: 1},    // inside OrderSummary's JSX
+			"formatCents": {cover: "full", tested: true, callers: 1},    // reached through the OrderSummary test
 			"unitPrice":   {cover: "full", tested: true, callers: 1},
 			"legacyTotal": {cover: "partial", callers: 0}, // the declaration line runs on import
-			"OrderForm":   {cover: "0", callers: -1},
+			// Components rendered only through JSX in App.
+			"OrderSummary": {cover: "full", tested: true, callers: 1},
+			"OrderForm":    {cover: "0", callers: 1},
 		},
 		hardToTest: "createOrder", hints: []string{"network", "clock"},
 		validate: "validate", file: "src/order.ts", edit: proposals.Edit{Old: "if (o.qty > 1000)", New: "if (o.qty > 500)"}, caller: "submit",
@@ -97,6 +100,8 @@ var examples = []exampleCase{
 			"_unit_price":  {cover: "partial", tested: true, callers: 1},
 			"legacy_total": {cover: "partial", callers: 0}, // the def line runs on import
 			"get_order":    {cover: "partial", callers: 0},
+			// get_order and the store test; data.get(...) dict calls don't count.
+			"MemoryStore.get": {cover: "partial", tested: true, callers: 2},
 		},
 		hardToTest: "send", hints: []string{"env", "clock", "network"},
 		validate: "validate", file: "orders/order.py", edit: proposals.Edit{Old: "if o.qty > 1000:", New: "if o.qty > 500:"}, caller: "create_order",
@@ -195,34 +200,16 @@ func TestExamples(t *testing.T) {
 // README's support matrix stays honest. When one of these fails because
 // analysis got better, update the matrix and move the check above.
 func TestExampleKnownGaps(t *testing.T) {
-	ctx := context.Background()
 	s, rt := openExample(t, "ts-react")
-	a, err := s.qaAnalyze(ctx, rt)
+	a, err := s.qaAnalyze(context.Background(), rt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	callers := map[string]int{}
 	for _, f := range a.funcs {
-		callers[f.Name] = f.Callers
-	}
-	// JSX use (<OrderSummary />, <App />) isn't a call (#18).
-	if callers["OrderSummary"] != 0 || callers["App"] != 0 {
-		t.Errorf("JSX usage now counts as calls (%v): update the support matrix", callers)
-	}
-	// A component with destructured props ends on its first line, so the
-	// calls in its body (total, formatCents) are missed.
-	if callers["formatCents"] != 0 {
-		t.Errorf("calls inside component bodies are now found (%v): update the support matrix", callers)
-	}
-
-	s, rt = openExample(t, "python-api")
-	if a, err = s.qaAnalyze(ctx, rt); err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range a.funcs {
-		// dict.get(...) calls in api.py are matched to MemoryStore.get by name.
-		if f.Name == "MemoryStore.get" && f.Callers <= 1 {
-			t.Errorf("MemoryStore.get callers = %d: name matching no longer confuses dict.get; update the support matrix", f.Callers)
+		// main.tsx renders <App /> from module-level code, which isn't a
+		// function, so App has no caller and counts as an entry point.
+		if f.Name == "App" && f.Callers != 0 {
+			t.Errorf("App callers = %d: module-level code now counts as a caller; update the support matrix", f.Callers)
 		}
 	}
 }

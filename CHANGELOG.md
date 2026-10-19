@@ -24,6 +24,21 @@ every merged pull request.
   switch to it.
 
 ### Fixed
+- **TypeScript / JavaScript:** a function with destructured parameters
+  (`function Card({ title }: Props)`) or an object return type was taken
+  to end on its first line, so calls in its body were missed. Arrow
+  functions that return JSX are measured to their closing parenthesis.
+  On CodeDiver's own React front end this finds almost three times as
+  many call edges.
+- **React:** rendering a component (`<OrderSummary />`, `<ui.Row>`) now
+  counts as calling it, and passing one (`component={Page}`,
+  `memo(Page)`) as a reference, so components are no longer reported as
+  unused. Calls in a nested function count for it, not also for the
+  function around it.
+- **Python / JavaScript:** calls like `data.get(...)` or `items.push(...)`
+  on a variable of unknown type no longer link to an unrelated class's
+  method of the same name; `store.get(...)` still links to
+  `MemoryStore.get`.
 - A repository with a top-level `testdata/` folder no longer gets coverage
   suites or tests detected from the fixtures inside it.
 - Opening a file with no covered lines (from the Uncovered heatmap, say)
