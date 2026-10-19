@@ -35,6 +35,10 @@ every merged pull request.
   `memo(Page)`) as a reference, so components are no longer reported as
   unused. Calls in a nested function count for it, not also for the
   function around it.
+- **TypeScript / JavaScript:** calls inside template literals
+  (`` `${dollars(cents)}` ``) were ignored along with the string text.
+- Testability hints now flag `smtplib`, `net/smtp`, sockets, `httpx`,
+  `aiohttp`, WebSockets and `XMLHttpRequest` as network access.
 - **Python / JavaScript:** calls like `data.get(...)` or `items.push(...)`
   on a variable of unknown type no longer link to an unrelated class's
   method of the same name; `store.get(...)` still links to

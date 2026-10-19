@@ -401,6 +401,11 @@ func TestMaskSource(t *testing.T) {
 	if strings.Count(got, "\n") != 1 {
 		t.Error("newlines must be preserved")
 	}
+	// Template literal text is masked, its ${…} interpolations are code.
+	got = maskSource("s = `call fake() ${total(o, { a: 1 })} and ${x}` + done()", specs["typescript"])
+	if strings.Contains(got, "fake(") || !strings.Contains(got, "total(o, { a: 1 })") || !strings.Contains(got, "done()") {
+		t.Errorf("template masked = %q", got)
+	}
 }
 
 func TestResolveImport(t *testing.T) {
