@@ -208,6 +208,19 @@ func TestExamples(t *testing.T) {
 			if !strings.Contains(strings.Join(callers, ","), ex.caller) {
 				t.Errorf("callers of %s = %v, want %s", ex.validate, callers, ex.caller)
 			}
+
+			// The change report puts that caller first in the blast radius,
+			// and the changed line was never run by the committed coverage.
+			r, err := s.ChangeReport(ctx, rt, ChangeRef{Proposal: p.ID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(r.Impact.Rings) == 0 || r.Impact.Rings[0].Depth != 1 || !strings.Contains(nodeNames(r.Impact.Rings[0].Nodes), ex.caller) {
+				t.Errorf("direct callers = %+v", r.Impact.Rings)
+			}
+			if !r.Coverage.Available || r.Coverage.Lines != 1 || r.Coverage.Uncovered != 1 || len(r.Coverage.Tests) == 0 {
+				t.Errorf("change coverage = %+v", r.Coverage)
+			}
 		})
 	}
 }
@@ -351,6 +364,15 @@ func TestTestdataIsNotThisProjectsCode(t *testing.T) {
 			t.Errorf("test discovered in testdata: %+v", tc)
 		}
 	}
+}
+
+// nodeNames joins blast-radius node names.
+func nodeNames(ns []ImpactNode) string {
+	var out []string
+	for _, n := range ns {
+		out = append(out, n.Name)
+	}
+	return strings.Join(out, ",")
 }
 
 // writeTestFile writes a file, creating its directory.
