@@ -252,6 +252,21 @@ func maskSource(src string, sp *langSpec) string {
 			}
 			j := i + 1
 			for j < n && b[j] != c {
+				// Template literal interpolations (`${total(o)}`) are code.
+				if c == '`' && b[j] == '$' && j+1 < n && b[j+1] == '{' {
+					depth := 0
+					for j++; j < n; j++ {
+						if b[j] == '{' {
+							depth++
+						} else if b[j] == '}' {
+							if depth--; depth == 0 {
+								break
+							}
+						}
+					}
+					j++
+					continue
+				}
 				if b[j] == '\\' {
 					b[j] = ' '
 					j++

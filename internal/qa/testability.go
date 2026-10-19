@@ -50,7 +50,7 @@ var hintRules = []hintRule{
 	{HintEnv, regexp.MustCompile(`\bos\.(?:Getenv|LookupEnv)\(|\bprocess\.env\b|\bos\.environ\b|\bos\.getenv\(|System\.getenv\(|Environment\.GetEnvironmentVariable\(|\benv::var\(`),
 		"reads environment variables inside the logic",
 		"read configuration once at startup and pass the values in"},
-	{HintNetwork, regexp.MustCompile(`\bhttp\.(?:Get|Post|Head|PostForm|DefaultClient)\b|\bnet\.Dial|\bfetch\(|\baxios[.(]|\brequests\.(?:get|post|put|delete|patch|request)\(|\burllib\.request|\bnew HttpClient\(|\bHttpClient\.newHttpClient\(|\breqwest::`),
+	{HintNetwork, regexp.MustCompile(`\bhttp\.(?:Get|Post|Head|PostForm|DefaultClient)\b|\bnet\.Dial|\bfetch\(|\baxios[.(]|\brequests\.(?:get|post|put|delete|patch|request)\(|\burllib\.request|\bnew HttpClient\(|\bHttpClient\.newHttpClient\(|\breqwest::|\bsmtplib\.SMTP|\bsmtp\.(?:SendMail|Dial)\(|\bsocket\.(?:socket|create_connection)\(|\bhttpx\.\w+\(|\baiohttp\.|\bnew WebSocket\(|\bXMLHttpRequest\b`),
 		"talks to the network directly",
 		"depend on an interface (or pass the client/base URL in) so tests can use a fake or a local test server"},
 	{HintFilesystem, regexp.MustCompile(`\bos\.(?:ReadFile|WriteFile|Open|OpenFile|Create|Remove|RemoveAll|MkdirAll|ReadDir|Stat)\(|\bioutil\.\w+\(|\bfs\.(?:readFileSync|writeFileSync|readFile|writeFile|existsSync|mkdirSync|readdirSync)\(|\bopen\([^)]*['"][rwa]b?['"]|\bFiles\.(?:read|write|newBuffered)\w*\(|\bFile\.(?:ReadAll|WriteAll)\w*\(|\bstd::fs::`),

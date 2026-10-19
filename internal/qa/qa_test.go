@@ -373,6 +373,12 @@ func TestHints(t *testing.T) {
 	if hints[0].Line != 3 || hints[0].Suggestion == "" {
 		t.Errorf("clock hint = %+v", hints[0])
 	}
+	// Mail, sockets and other clients count as network too.
+	for _, line := range []string{"with smtplib.SMTP(host) as s:", "return smtp.SendMail(addr, a, from, to, msg)", "sock = socket.create_connection((h, p))", "r = httpx.get(url)", "ws := new WebSocket(url)"} {
+		if hs := Hints([]string{line}, 1, 1, 1, 0); len(hs) != 1 || hs[0].Kind != HintNetwork {
+			t.Errorf("%q hints = %+v", line, hs)
+		}
+	}
 }
 
 func TestCalls(t *testing.T) {
