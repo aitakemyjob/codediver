@@ -43,6 +43,14 @@ every merged pull request.
   graph of hundreds of nodes.
 
 ### Fixed
+- Jest manual mocks (files under `__mocks__/`) count as test files, not as
+  untested code.
+- Coverage below 0.05% shows as `<0.1%` instead of a misleading `0.0%`.
+- Agent text for tests of a change: once per-test runs exist, tests that
+  run the changed lines are listed apart from tests that reach the changed
+  functions without running those lines, and estimated tests are labelled
+  as such. Counts read "1 caller", "1 new line", and testability hints
+  read `(line 7: fetch)`.
 - **Java / Kotlin:** tests in `src/test/java/…` are now mapped to the code
   they call in the mirrored `src/main/java/…` package, so methods called
   on local variables (`store.save(…)`) count as tested.

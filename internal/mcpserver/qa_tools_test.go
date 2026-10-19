@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aitakemyjob/codediver/internal/core"
+	"github.com/aitakemyjob/codediver/internal/qa"
 	"github.com/aitakemyjob/codediver/internal/testutil"
 )
 
@@ -115,7 +117,7 @@ func TestTestsForChange(t *testing.T) {
 	p := filepath.Join(h.dir, "api", "api.go")
 	testutil.Must(t, os.WriteFile(p, []byte(strings.Replace(testutil.Files["api/api.go"], "if o.Qty <= 0 {", "if o.Qty < 1 {", 1)), 0o644))
 	h.mustCall("get_tests_for_change", map[string]any{"show": true}, "Changed lines: 0 of 1 covered", "1 not run by any test",
-		"not covered: api/api.go:", "Tests to run", "TestCreateOrderRejectsBadJSON", "estimated", "Direct callers", "Handler.CreateOrder", "→ validate")
+		"not covered: api/api.go:", "Tests that call or reach the changed functions (1), estimated", "TestCreateOrderRejectsBadJSON", "estimated", "Direct callers", "Handler.CreateOrder", "→ validate")
 	if ev := h.waitFor("focus"); !strings.Contains(jsonOf(t, ev.Data), `"pane":"tests"`) {
 		t.Errorf("focus = %+v", ev.Data)
 	}
@@ -125,6 +127,39 @@ func TestTestsForChange(t *testing.T) {
 		"changes": []map[string]any{{"path": "api/api.go", "edits": []map[string]any{{"old": "if o.Qty < 1 {", "new": "if o.Qty < 1 || o.Qty > 99 {"}}}},
 	}, "Changed lines: 0 of 1 covered", "Direct callers")
 	id := strings.Fields(strings.TrimPrefix(out, "proposal "))[0]
-	h.mustCall("get_tests_for_change", map[string]any{"proposal": id}, "Changed lines: 0 of 1 covered", "plus 1 new lines")
+	h.mustCall("get_tests_for_change", map[string]any{"proposal": id}, "Changed lines: 0 of 1 covered", "plus 1 new line.")
 	h.mustCall("get_proposal", map[string]any{"id": id}, "pending", "Changed lines")
+}
+
+func TestChangeCoverageText(t *testing.T) {
+	cc := &core.ChangeCoverage{Available: true, Measured: true, Lines: 2, Covered: 2, Added: 1, Tests: []core.ChangeTest{
+		{Name: "TestRuns", File: "a_test.go", Line: 3, Measured: true, Lines: 2, Direct: true},
+		{Name: "TestOne", File: "a_test.go", Line: 9, Measured: true, Lines: 1, Functions: []string{"F"}},
+		{Name: "it formats", File: "a.test.ts", Line: 1, Functions: []string{"fmt"}},
+		{Name: "TestElsewhere", File: "b_test.go", Line: 5, Measured: true, Functions: []string{"F"}},
+	}}
+	var sb strings.Builder
+	writeChangeCoverage(&sb, cc, true)
+	out := sb.String()
+	for _, want := range []string{
+		"Changed lines: 2 of 2 covered by tests; plus 1 new line.",
+		"Tests that run the changed lines (2), measured:\n- TestRuns  a_test.go:3 (runs 2 changed lines; calls the changed code)\n- TestOne  a_test.go:9 (runs 1 changed line; reaches F)",
+		"Tests that call or reach the changed functions (1), estimated: the developer can click Run these tests to measure:\n- it formats",
+		"Tests that reach the changed functions but don't run these lines (1), measured:\n- TestElsewhere",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if plural(1, "caller") != "1 caller" || plural(3, "caller") != "3 callers" {
+		t.Error("plural")
+	}
+}
+
+func TestGapLineHint(t *testing.T) {
+	var sb strings.Builder
+	gapLine(&sb, 0, &core.FuncQA{Name: "send", File: "a.ts", Line: 1, EndLine: 9, Pct: 0, Hints: []qa.Hint{{Kind: qa.HintNetwork, Line: 7, Match: "fetch(", Problem: "talks to the network directly", Suggestion: "inject the client"}}})
+	if want := "testability: talks to the network directly (line 7: fetch) → inject the client"; !strings.Contains(sb.String(), want) {
+		t.Errorf("gap line = %q", sb.String())
+	}
 }
