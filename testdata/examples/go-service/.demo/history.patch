@@ -1,0 +1,12 @@
+--- a/order/order.go
++++ b/order/order.go
+@@ -26,6 +26,9 @@
+ 	if o.SKU == "" {
+ 		return ErrSKU
+ 	}
++	if o.Qty > 1000 {
++		return ErrTooMany
++	}
+ 	return nil
+ }
+ 

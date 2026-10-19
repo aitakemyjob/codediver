@@ -1,0 +1,20 @@
+--- a/order/order.go
++++ b/order/order.go
+@@ -14,7 +14,7 @@
+ var (
+ 	ErrQty      = errors.New("quantity must be at least 1")
+ 	ErrSKU      = errors.New("sku is required")
+-	ErrTooMany  = errors.New("quantity is over the limit of 1000")
++	ErrTooMany  = errors.New("quantity is over the limit of 500")
+ 	bulkMinimum = 10
+ )
+ 
+@@ -26,7 +26,7 @@
+ 	if o.SKU == "" {
+ 		return ErrSKU
+ 	}
+-	if o.Qty > 1000 {
++	if o.Qty > 500 {
+ 		return ErrTooMany
+ 	}
+ 	return nil

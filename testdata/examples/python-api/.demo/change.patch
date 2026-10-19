@@ -1,0 +1,13 @@
+--- a/orders/order.py
++++ b/orders/order.py
+@@ -22,8 +22,8 @@
+         raise InvalidOrder("quantity must be at least 1")
+     if not o.sku:
+         raise InvalidOrder("sku is required")
+-    if o.qty > 1000:
+-        raise InvalidOrder("quantity is over the limit of 1000")
++    if o.qty > 500:
++        raise InvalidOrder("quantity is over the limit of 500")
+ 
+ 
+ def total(o: Order) -> int:

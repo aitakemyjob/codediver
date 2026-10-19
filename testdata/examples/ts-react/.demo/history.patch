@@ -1,0 +1,10 @@
+--- a/src/order.ts
++++ b/src/order.ts
+@@ -13,6 +13,7 @@
+ export function validate(o: Order): string | null {
+   if (o.qty <= 0) return 'quantity must be at least 1';
+   if (!o.sku) return 'sku is required';
++  if (o.qty > 1000) return 'quantity is over the limit of 1000';
+   return null;
+ }
+ 

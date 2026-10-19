@@ -63,7 +63,7 @@ func DetectSuites(files []string, read func(string) string) []Suite {
 	py := map[string]bool{}
 	cargoRoots := map[string]bool{}
 	for _, f := range files {
-		if strings.Count(f, "/") > 3 || strings.Contains(f, "node_modules/") || strings.Contains(f, "/testdata/") {
+		if strings.Count(f, "/") > 3 || strings.Contains(f, "node_modules/") || InTestdata(f) {
 			continue
 		}
 		dir, base := path.Dir(f), path.Base(f)
@@ -117,6 +117,13 @@ func DetectSuites(files []string, read func(string) string) []Suite {
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Dir < out[j].Dir })
 	return out
+}
+
+// InTestdata reports whether p lies in a testdata directory: fixtures and
+// example projects that belong to the tests, not the project's own code
+// under test.
+func InTestdata(p string) bool {
+	return strings.HasPrefix(p, "testdata/") || strings.Contains(p, "/testdata/")
 }
 
 // hasFile reports whether files contains p.
