@@ -52,7 +52,7 @@ func IsTestFile(p string) bool {
 	case ".go":
 		return strings.HasSuffix(lower, "_test.go")
 	case ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".vue", ".svelte":
-		return strings.Contains(lower, ".test.") || strings.Contains(lower, ".spec.") || strings.Contains(dirs, "/__tests__/")
+		return strings.Contains(lower, ".test.") || strings.Contains(lower, ".spec.") || strings.Contains(dirs, "/__tests__/") || strings.Contains(dirs, "/__mocks__/")
 	case ".py":
 		return strings.HasPrefix(lower, "test_") || strings.HasSuffix(lower, "_test.py") || (strings.Contains(dirs, "/tests/") && lower != "__init__.py" && lower != "conftest.py")
 	case ".java", ".kt", ".kts", ".scala", ".groovy":

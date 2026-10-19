@@ -77,15 +77,11 @@ func diffLabel(commit, base, head string, staged bool) string {
 // writeChangeCoverage describes a change's coverage: the line counts, the
 // tests and, when detail is set, the uncovered lines per file.
 func writeChangeCoverage(sb *strings.Builder, cc *core.ChangeCoverage, detail bool) {
-	kind := "estimated from the static test mapping (ask the developer to click Run these tests in the Tests panel to measure)"
-	if cc.Measured {
-		kind = "measured by per-test runs"
-	}
 	switch {
 	case !cc.Available:
 		sb.WriteString("No coverage report yet, so changed lines can't be checked; ask the developer to click Run coverage in the QA view.\n")
 	case cc.Lines == 0 && cc.Added > 0:
-		fmt.Fprintf(sb, "The change only adds code: %d new lines no test has run yet.\n", cc.Added)
+		fmt.Fprintf(sb, "The change only adds code: %s no test has run yet.\n", plural(cc.Added, "new line"))
 	case cc.Lines == 0:
 		sb.WriteString("No executable lines changed.\n")
 	default:
@@ -97,7 +93,7 @@ func writeChangeCoverage(sb *strings.Builder, cc *core.ChangeCoverage, detail bo
 			fmt.Fprintf(sb, ", %d in files without coverage data", cc.Unknown)
 		}
 		if cc.Added > 0 {
-			fmt.Fprintf(sb, "; plus %d new lines", cc.Added)
+			fmt.Fprintf(sb, "; plus %s", plural(cc.Added, "new line"))
 		}
 		sb.WriteString(".\n")
 	}
@@ -131,33 +127,70 @@ func writeChangeCoverage(sb *strings.Builder, cc *core.ChangeCoverage, detail bo
 		sb.WriteString("No tests exercise the change.\n")
 		return
 	}
-	fmt.Fprintf(sb, "Tests to run (%d, %s):\n", len(cc.Tests)+cc.MoreTests, kind)
+	// Measured tests either run changed lines or were shown not to; the
+	// rest are estimates from the static mapping.
+	var runs, misses, estimated []core.ChangeTest
+	for _, t := range cc.Tests {
+		switch {
+		case t.Measured && t.Lines > 0:
+			runs = append(runs, t)
+		case t.Measured:
+			misses = append(misses, t)
+		default:
+			estimated = append(estimated, t)
+		}
+	}
 	limit := len(cc.Tests)
 	if !detail {
-		limit = min(limit, 8)
+		limit = 8
 	}
-	for _, t := range cc.Tests[:limit] {
-		var notes []string
-		if t.Measured {
-			notes = append(notes, fmt.Sprintf("runs %d changed lines", t.Lines))
+	group := func(title, note string, ts []core.ChangeTest) {
+		if len(ts) == 0 || limit <= 0 {
+			if len(ts) > 0 {
+				fmt.Fprintf(sb, "%s: %d more\n", title, len(ts))
+			}
+			return
 		}
-		if t.Direct {
-			notes = append(notes, "calls the changed code")
-		} else if len(t.Functions) > 0 {
-			notes = append(notes, "reaches "+strings.Join(t.Functions, ", "))
+		fmt.Fprintf(sb, "%s (%d)%s:\n", title, len(ts), note)
+		shown := ts[:min(len(ts), limit)]
+		limit -= len(shown)
+		for _, t := range shown {
+			var notes []string
+			if t.Measured && t.Lines > 0 {
+				notes = append(notes, "runs "+plural(t.Lines, "changed line"))
+			}
+			if t.Direct {
+				notes = append(notes, "calls the changed code")
+			} else if len(t.Functions) > 0 {
+				notes = append(notes, "reaches "+strings.Join(t.Functions, ", "))
+			}
+			if t.Failed {
+				notes = append(notes, "FAILED last run")
+			}
+			fmt.Fprintf(sb, "- %s  %s:%d", t.Name, t.File, t.Line)
+			if len(notes) > 0 {
+				fmt.Fprintf(sb, " (%s)", strings.Join(notes, "; "))
+			}
+			sb.WriteString("\n")
 		}
-		if t.Failed {
-			notes = append(notes, "FAILED last run")
+		if more := len(ts) - len(shown); more > 0 {
+			fmt.Fprintf(sb, "  … %d more\n", more)
 		}
-		fmt.Fprintf(sb, "- %s  %s:%d", t.Name, t.File, t.Line)
-		if len(notes) > 0 {
-			fmt.Fprintf(sb, " (%s)", strings.Join(notes, "; "))
-		}
-		sb.WriteString("\n")
 	}
-	if more := len(cc.Tests) - limit + cc.MoreTests; more > 0 {
-		fmt.Fprintf(sb, "  … %d more\n", more)
+	group("Tests that run the changed lines", ", measured", runs)
+	group("Tests that call or reach the changed functions", ", estimated: the developer can click Run these tests to measure", estimated)
+	group("Tests that reach the changed functions but don't run these lines", ", measured", misses)
+	if cc.MoreTests > 0 {
+		fmt.Fprintf(sb, "  … %d more tests not listed\n", cc.MoreTests)
 	}
+}
+
+// plural formats a count with a noun, adding "s" unless it is one.
+func plural(n int, noun string) string {
+	if n == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", n, noun)
 }
 
 // writeImpact describes a blast radius closest first: direct callers by
@@ -168,9 +201,9 @@ func writeImpact(sb *strings.Builder, im *core.Impact) {
 		return
 	}
 	sum := im.Summary
-	fmt.Fprintf(sb, "Blast radius: %d callers in %d files (direct %d · 2 calls away %d · 3 calls away %d)", sum.Total(), sum.Files, sum.Callers[0], sum.Callers[1], sum.Callers[2])
+	fmt.Fprintf(sb, "Blast radius: %s in %s (direct %d · 2 calls away %d · 3 calls away %d)", plural(sum.Total(), "caller"), plural(sum.Files, "file"), sum.Callers[0], sum.Callers[1], sum.Callers[2])
 	if im.Beyond > 0 {
-		fmt.Fprintf(sb, ", %d paths continue further", im.Beyond)
+		fmt.Fprintf(sb, ", %s continue further", plural(im.Beyond, "path"))
 	}
 	sb.WriteString(".\n")
 	for _, r := range im.Rings {
@@ -204,7 +237,7 @@ func writeImpact(sb *strings.Builder, im *core.Impact) {
 		for _, p := range r.Packages[:min(len(r.Packages), 6)] {
 			pk = append(pk, fmt.Sprintf("%s %d", p.Path, p.Count))
 		}
-		fmt.Fprintf(sb, "%d calls away: %d callers (%s)\n", r.Depth, r.Total, strings.Join(pk, ", "))
+		fmt.Fprintf(sb, "%d calls away: %s (%s)\n", r.Depth, plural(r.Total, "caller"), strings.Join(pk, ", "))
 	}
 	if len(im.Entries) > 0 {
 		var es []string

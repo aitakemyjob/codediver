@@ -5,6 +5,7 @@ import type { FileQA, TestCase } from '../../lib/types';
 /** Formats a coverage percentage; negative means unknown. */
 export function pctLabel(p: number): string {
   if (p < 0) return '—';
+  if (p > 0 && p < 0.05) return '<0.1%';
   return `${p >= 99.95 || p === 0 ? p.toFixed(0) : p.toFixed(1)}%`;
 }
 

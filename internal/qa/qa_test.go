@@ -186,7 +186,8 @@ func TestRanges(t *testing.T) {
 
 func TestIsTestFile(t *testing.T) {
 	yes := []string{"a/b_test.go", "src/Menu.test.tsx", "src/__tests__/x.js", "tests/test_api.py", "pkg/api_test.py",
-		"src/test/java/com/AppTest.java", "CartTests.cs", "spec/user_spec.rb", "tests/integration.rs", "FooTest.php", "AppTests.swift"}
+		"src/test/java/com/AppTest.java", "CartTests.cs", "spec/user_spec.rb", "tests/integration.rs", "FooTest.php", "AppTests.swift",
+		"src/__mocks__/api.ts"}
 	no := []string{"a/b.go", "src/Menu.tsx", "tests/__init__.py", "tests/conftest.py", "src/main/java/App.java", "src/lib.rs", "testutil/helpers.go"}
 	for _, p := range yes {
 		if !IsTestFile(p) {

@@ -91,7 +91,8 @@ func gapLine(sb *strings.Builder, i int, g *core.FuncQA) {
 	for _, h := range g.Hints {
 		at := ""
 		if h.Line > 0 {
-			at = fmt.Sprintf(" (L%d %s)", h.Line, h.Match)
+			// Matches like "fetch(" read as an unclosed parenthesis.
+			at = fmt.Sprintf(" (line %d: %s)", h.Line, strings.TrimRight(h.Match, "( "))
 		}
 		fmt.Fprintf(sb, "   testability: %s%s → %s\n", h.Problem, at, h.Suggestion)
 	}

@@ -9,6 +9,8 @@ describe('qa helpers', () => {
   it('formats and colors coverage', () => {
     expect(pctLabel(-1)).toBe('—');
     expect(pctLabel(0)).toBe('0%');
+    expect(pctLabel(0.01)).toBe('<0.1%'); // not a misleading 0.0%
+    expect(pctLabel(0.05)).toBe('0.1%');
     expect(pctLabel(76.24)).toBe('76.2%');
     expect(pctLabel(100)).toBe('100%');
     expect(coverageTone(-1)).toBe('var(--text-3)');
