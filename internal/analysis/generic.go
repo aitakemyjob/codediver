@@ -321,30 +321,88 @@ func blockEnd(lines []string, idx int, sp *langSpec) int {
 		}
 		return idx + 1
 	default:
-		depth, opened := 0, false
-		for j := idx; j < len(lines) && j < idx+4000; j++ {
-			for _, c := range lines[j] {
-				switch c {
-				case '{':
-					depth++
-					opened = true
-				case '}':
-					depth--
-				case ';':
-					if !opened && depth == 0 {
-						return j + 1 // declaration only
-					}
-				}
-				if opened && depth == 0 {
-					return j + 1
+		return braceEnd(lines, idx)
+	}
+}
+
+// braceEnd finds where a brace-language definition starting at line idx
+// ends. Braces inside parentheses belong to the parameters (destructured
+// props, default objects), and a brace right after `:`, `|`, `&`, `,` or
+// `<` opens an object type (`): { a: string } {`), not the body. An arrow
+// function whose body is an expression (`=> (<div>…</div>)`, `=> x + 1`)
+// ends where that expression closes. Lines are masked, so strings and
+// comments don't count.
+func braceEnd(lines []string, idx int) int {
+	parens, braces, brackets, types := 0, 0, 0, 0
+	opened, arrow, expr := false, false, false
+	prev := byte(0) // last non-space character
+	for j := idx; j < len(lines) && j < idx+4000; j++ {
+		line := lines[j]
+		for k := 0; k < len(line); k++ {
+			c := line[k]
+			last := prev
+			if c != ' ' && c != '\t' {
+				prev = c
+			}
+			if expr || arrow {
+				// After `=>`, the first token decides: a brace is a body,
+				// anything else an expression.
+				if arrow && c != ' ' && c != '\t' {
+					arrow = false
+					expr = c != '{'
 				}
 			}
-			if !opened && j > idx+3 {
-				return idx + 1
+			switch c {
+			case '(':
+				parens++
+			case ')':
+				parens--
+			case '[':
+				brackets++
+			case ']':
+				brackets--
+			case '{':
+				if !opened && !expr && parens == 0 && brackets == 0 && (types > 0 || strings.IndexByte(":|&,<", last) >= 0) {
+					types++ // an object type before the body
+					continue
+				}
+				if parens == 0 && brackets == 0 && !expr && !opened {
+					opened = true
+					braces = 0
+				}
+				braces++
+			case '}':
+				if types > 0 && !opened {
+					types--
+					continue
+				}
+				braces--
+			case '=':
+				if k+1 < len(line) && line[k+1] == '>' && parens == 0 && !opened && !expr {
+					arrow = true
+					k++
+				}
+			case ';':
+				if !opened && !expr && parens == 0 && braces == 0 && types == 0 {
+					return j + 1 // declaration only
+				}
+			}
+			if opened && braces == 0 {
+				return j + 1
 			}
 		}
-		return idx + 1
+		if expr && parens <= 0 && braces <= 0 && brackets <= 0 {
+			// The expression closes on this line unless it visibly continues.
+			t := strings.TrimRight(line, " \t")
+			if !strings.HasSuffix(t, "=>") && !strings.HasSuffix(t, "(") && !strings.HasSuffix(t, "&&") && !strings.HasSuffix(t, "||") && !strings.HasSuffix(t, "?") && !strings.HasSuffix(t, ":") {
+				return j + 1
+			}
+		}
+		if !opened && !arrow && !expr && parens <= 0 && j > idx+3 {
+			return idx + 1
+		}
 	}
+	return idx + 1
 }
 
 // splitParams parses a parameter list into Params, handling generics,
@@ -407,6 +465,24 @@ type genericFile struct {
 }
 
 var callRe = regexp.MustCompile(`(?:(this|self|[A-Za-z_$][\w$]*)\s*(?:\.|::|->)\s*)?([A-Za-z_$][\w$]*)\s*\(`)
+
+var (
+	// jsxRe finds rendered components: <Foo …>, <Foo/>, <ns.Foo>. The tag
+	// must not follow an identifier, which rules out generics (useState<T>).
+	jsxRe = regexp.MustCompile(`(?:^|[^\w$.])<((?:[A-Za-z_$][\w$]*\.)*[A-Z][\w$]*)(?:[\s/>]|$)`)
+	// componentRefRe finds components passed as values: component={Foo},
+	// memo(Foo), forwardRef(Foo), { component: Foo }.
+	componentRefRe = regexp.MustCompile(`=\{\s*([A-Z][\w$]*)\s*\}|\b(?:memo|forwardRef|observer)\(\s*([A-Z][\w$]*)\s*[,)]|\b(?:component|Component)\s*:\s*([A-Z][\w$]*)\b`)
+)
+
+// jsxFile reports whether a file may contain JSX.
+func jsxFile(p string) bool {
+	switch path.Ext(p) {
+	case ".tsx", ".jsx", ".js", ".mjs":
+		return true
+	}
+	return false
+}
 
 // analyzeGeneric indexes non-Go files lexically: definitions, directory
 // level import edges and name-matched call edges (all marked heuristic).
@@ -496,7 +572,20 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 			if !s.Kind.IsCallable() {
 				continue
 			}
+			// Lines of functions nested in s belong to them, not to s.
+			var nested [][2]int
+			for _, c := range gf.syms {
+				if c != s && c.Kind.IsCallable() && c.Line > s.Line && c.EndLine <= s.EndLine {
+					nested = append(nested, [2]int{c.Line, c.EndLine})
+				}
+			}
+		lines:
 			for ln := s.Line; ln <= s.EndLine && ln-1 < len(gf.lines); ln++ {
+				for _, r := range nested {
+					if ln >= r[0] && ln <= r[1] {
+						continue lines
+					}
+				}
 				text := gf.lines[ln-1]
 				if ln == s.Line {
 					// Skip the definition's own name.
@@ -528,6 +617,23 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 						}
 					}
 					ix.addEdge(Edge{From: s.ID, To: to, Kind: EdgeCall, Lines: []int{ln}, Heuristic: true}, merge)
+				}
+				if jsxFile(gf.path) {
+					// Rendering a component is calling it; passing one is a reference.
+					link := func(name string, kind EdgeKind) {
+						if i := strings.LastIndexByte(name, '.'); i >= 0 {
+							name = name[i+1:]
+						}
+						if t := pickTarget(s, "", byName[name], gf.path); t != nil && t.ID != s.ID {
+							ix.addEdge(Edge{From: s.ID, To: t.ID, Kind: kind, Lines: []int{ln}, Heuristic: true}, merge)
+						}
+					}
+					for _, m := range jsxRe.FindAllStringSubmatch(text, -1) {
+						link(m[1], EdgeCall)
+					}
+					for _, m := range componentRefRe.FindAllStringSubmatch(text, -1) {
+						link(m[1]+m[2]+m[3], EdgeRef)
+					}
 				}
 			}
 		}
@@ -741,16 +847,24 @@ func pickTarget(from *Symbol, recv string, cands []*Symbol, file string) *Symbol
 			sameDir = append(sameDir, c)
 		}
 	}
-	// A receiver-qualified call (obj.method) should land on a method.
+	// A receiver-qualified call (obj.method) should land on a method. When
+	// the method name is also a built-in container or string method
+	// (data.get, items.push), the receiver has to look like the class
+	// (store.get → MemoryStore.get); an unknown receiver is more likely a
+	// dict, list or string.
 	filter := func(list []*Symbol) []*Symbol {
 		if recv == "" {
 			return list
 		}
 		var out []*Symbol
 		for _, c := range list {
-			if c.Kind == KindMethod || c.Kind == KindClass || (recv != "" && c.Kind == KindFunc) {
-				out = append(out, c)
+			if c.Kind != KindMethod && c.Kind != KindClass && c.Kind != KindFunc {
+				continue
 			}
+			if c.Kind == KindMethod && builtinMethods[c.Name] && recv != "this" && recv != "self" && !receiverMatches(recv, c.Receiver) {
+				continue
+			}
+			out = append(out, c)
 		}
 		return out
 	}
@@ -763,6 +877,29 @@ func pickTarget(from *Symbol, recv string, cands []*Symbol, file string) *Symbol
 		}
 	}
 	return nil
+}
+
+// builtinMethods are method names common on built-in dicts, lists, maps,
+// sets, strings and promises in Python and JavaScript.
+var builtinMethods = map[string]bool{}
+
+// init fills builtinMethods.
+func init() {
+	for _, m := range strings.Fields(`get set has add delete clear pop push shift unshift append extend insert remove
+		update keys values items entries copy sort reverse index count find filter map reduce forEach some every
+		includes join split strip replace startswith endswith lower upper format then catch finally slice splice
+		concat setdefault discard toString trim`) {
+		builtinMethods[m] = true
+	}
+}
+
+// receiverMatches reports whether a call's receiver variable plausibly
+// holds an instance of class: one name contains the other, ignoring case
+// and underscores (store ~ MemoryStore, order_repo ~ OrderRepo).
+func receiverMatches(recv, class string) bool {
+	norm := func(s string) string { return strings.ToLower(strings.ReplaceAll(s, "_", "")) }
+	r, c := norm(recv), norm(class)
+	return r != "" && c != "" && (strings.Contains(c, r) || strings.Contains(r, c))
 }
 
 // resolveImport maps an import spec to a repo file, when possible.

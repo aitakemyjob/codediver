@@ -55,9 +55,10 @@ What CodeDiver finds in these examples today (pinned by the tests):
 | Tests discovered | ✓ | ✓ (describe/it) | ✓ (functions and classes) |
 | Test → code mapping | ✓ | ✓ | ✓ |
 | Call edges | ✓ type-aware | name matching (`~`) | name matching (`~`) |
-| JSX use (`<OrderSummary />`) as a call | n/a | ✗ (#18) | n/a |
-| Calls inside a component with destructured props | n/a | ✗: the body is taken to end at the `{` of the props | n/a |
-| Method calls on other types with the same name | ✓ | — | ✗: `dict.get(...)` counts as a call to `MemoryStore.get` |
+| JSX use (`<OrderSummary />`) as a call | n/a | ✓ (`component={Foo}` and `memo(Foo)` as references) | n/a |
+| Calls inside components with destructured props | n/a | ✓ | n/a |
+| Calls from module-level code (`render(<App />)` in `main.tsx`) | n/a | ✗: not inside a function, so `App` has no caller | ✗ |
+| Same method name on unrelated types | ✓ type-aware | name matching | built-in names (`get`, `append`…) only link when the receiver looks like the class (`store.get` → `MemoryStore.get`, not `data.get`) |
 | Coverage import | ✓ | ✓ | ✓ |
 | Testability hints | ✓ | ✓ | ✓ |
 

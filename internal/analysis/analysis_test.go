@@ -29,7 +29,7 @@ func testLang(p string) string {
 	switch path.Ext(p) {
 	case ".go":
 		return "go"
-	case ".ts":
+	case ".ts", ".tsx":
 		return "typescript"
 	case ".py":
 		return "python"
@@ -416,5 +416,149 @@ func TestResolveImport(t *testing.T) {
 		if got := resolveImport(c.from, c.spec, specs[c.lang], files); got != c.want {
 			t.Errorf("resolveImport(%s, %s) = %q, want %q", c.from, c.spec, got, c.want)
 		}
+	}
+}
+
+func TestGenericReactComponents(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"src/fmt.ts": `export function money(c: number) { return '$' + c; }
+export function total(n: number) { return n * 2; }
+export function split(n: number): { whole: number; cents: number } {
+  const whole = total(n);
+  return { whole, cents: 0 };
+}
+export async function load(): Promise<{ ok: boolean }> {
+  return { ok: !!total(1) };
+}
+`,
+		"src/Summary.tsx": `import { money, total } from './fmt';
+
+export function Summary({ qty }: { qty: number }) {
+  const label = useLabel<Props>(qty);
+  return (
+    <div className={label}>
+      <b>{money(total(qty))}</b>
+    </div>
+  );
+}
+
+export const Row = ({ qty }: { qty: number }) => (
+  <span>{total(qty)}</span>
+);
+
+export const Double = (n: number) => total(n) * 2;
+
+export function useLabel<T>(n: number) { return String(n); }
+`,
+		"src/App.tsx": `import { Summary, Row } from './Summary';
+
+export function App() {
+  return (
+    <main>
+      <Summary qty={1} />
+      <ui.Row qty={2}></ui.Row>
+      <Route component={Page} />
+    </main>
+  );
+}
+
+export function Page() {
+  const onClick = () => {
+    total(3);
+  };
+  return <button onClick={onClick}>go</button>;
+}
+
+const Memoized = memo(Page);
+`,
+	})
+	ix := Build(root, files, testLang)
+	sym := func(id string) *Symbol {
+		s := ix.Symbols[id]
+		if s == nil {
+			t.Fatalf("missing %s", id)
+		}
+		return s
+	}
+	// An object return type is not the body, even with ; inside it.
+	if s := sym("h:src/fmt.ts#split"); s.EndLine != 6 {
+		t.Errorf("split ends at %d, want 6", s.EndLine)
+	}
+	if s := sym("h:src/fmt.ts#load"); s.EndLine != 9 {
+		t.Errorf("load ends at %d, want 9", s.EndLine)
+	}
+	// Destructured props don't end the function on its first line.
+	if s := sym("h:src/Summary.tsx#Summary"); s.EndLine != 10 {
+		t.Errorf("Summary ends at %d, want 10", s.EndLine)
+	}
+	// An arrow function with a JSX expression body ends where it closes;
+	// a one-line expression body ends on its line.
+	if s := sym("h:src/Summary.tsx#Row"); s.EndLine != 14 {
+		t.Errorf("Row ends at %d, want 14", s.EndLine)
+	}
+	if s := sym("h:src/Summary.tsx#Double"); s.EndLine != 16 {
+		t.Errorf("Double ends at %d, want 16", s.EndLine)
+	}
+	for _, e := range [][3]string{
+		{"h:src/fmt.ts#split", "h:src/fmt.ts#total", string(EdgeCall)},
+		{"h:src/fmt.ts#load", "h:src/fmt.ts#total", string(EdgeCall)},
+		{"h:src/Summary.tsx#Summary", "h:src/fmt.ts#money", string(EdgeCall)},
+		{"h:src/Summary.tsx#Summary", "h:src/fmt.ts#total", string(EdgeCall)},
+		{"h:src/Summary.tsx#Row", "h:src/fmt.ts#total", string(EdgeCall)},
+		{"h:src/Summary.tsx#Double", "h:src/fmt.ts#total", string(EdgeCall)},
+		// JSX renders count as calls, <ns.Row> included.
+		{"h:src/App.tsx#App", "h:src/Summary.tsx#Summary", string(EdgeCall)},
+		{"h:src/App.tsx#App", "h:src/Summary.tsx#Row", string(EdgeCall)},
+		// A component passed as a prop is a reference.
+		{"h:src/App.tsx#App", "h:src/App.tsx#Page", string(EdgeRef)},
+		// Calls in a nested function belong to it.
+		{"h:src/App.tsx#onClick", "h:src/fmt.ts#total", string(EdgeCall)},
+	} {
+		if !hasEdge(ix, e[0], e[1], EdgeKind(e[2])) {
+			t.Errorf("missing %s edge %s → %s: %+v", e[2], e[0], e[1], ix.Callees(e[0]))
+		}
+	}
+	if hasEdge(ix, "h:src/App.tsx#Page", "h:src/fmt.ts#total", EdgeCall) {
+		t.Error("a nested function's calls must not be counted for its parent too")
+	}
+	// A generic type argument is not a JSX element.
+	for _, e := range ix.Callees("h:src/Summary.tsx#Summary") {
+		if strings.HasSuffix(e.To, "#Props") {
+			t.Errorf("generic treated as JSX: %+v", e)
+		}
+	}
+}
+
+func TestGenericBuiltinMethodNames(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"store.py": `class OrderStore:
+    def get(self, key):
+        return self.items.get(key)
+
+    def lookup(self, key):
+        return self.get(key)
+`,
+		"api.py": `def handle(data, store):
+    name = data.get("name")
+    order = store.get(name)
+    return order
+
+def other(cache):
+    return cache.get("x")
+`,
+	})
+	ix := Build(root, files, testLang)
+	get := "h:store.py#OrderStore.get"
+	callers := map[string]bool{}
+	for _, e := range ix.Callers(get) {
+		callers[e.From] = true
+	}
+	// store.get looks like an OrderStore; self.get is the class's own; data
+	// and cache could be anything, and get is a dict method.
+	if !callers["h:api.py#handle"] || !callers["h:store.py#OrderStore.lookup"] || callers["h:api.py#other"] || len(callers) != 2 {
+		t.Errorf("callers of OrderStore.get = %v", callers)
+	}
+	if !receiverMatches("order_store", "OrderStore") || receiverMatches("data", "OrderStore") {
+		t.Error("receiverMatches")
 	}
 }
