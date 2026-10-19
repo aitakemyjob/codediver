@@ -106,12 +106,11 @@ func TestDiffMapsSymbolsAndImpact(t *testing.T) {
 	if len(ov.Files) != 1 || len(ov.Files[0].Symbols) != 1 || ov.Files[0].Symbols[0].Name != "validate" {
 		t.Fatalf("diff = %+v", ov.Files)
 	}
-	callers := map[string]bool{}
-	for _, n := range ov.Impact.Nodes {
-		callers[n.Label] = true
+	if len(ov.Impact.Rings) == 0 || ov.Impact.Rings[0].Depth != 1 || ov.Impact.Rings[0].Nodes[0].Name != "Handler.CreateOrder" {
+		t.Fatalf("impact should list the direct caller: %+v", ov.Impact.Rings)
 	}
-	if !callers["Handler.CreateOrder"] {
-		t.Errorf("impact should include the caller: %+v", ov.Impact.Nodes)
+	if n := ov.Impact.Rings[0].Nodes[0]; n.Via != "validate" || n.Package != "api" {
+		t.Errorf("direct caller = %+v", n)
 	}
 	// Files without symbols (untracked, non-code) must serialize symbols as [].
 	testutil.Must(t, os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello\n"), 0o644))
@@ -171,8 +170,8 @@ func TestProposalImpactAndHeat(t *testing.T) {
 	if len(p.Changes[0].Symbols) != 1 || !strings.Contains(p.Changes[0].Symbols[0], "Memory).Save") {
 		t.Fatalf("symbols = %v", p.Changes[0].Symbols)
 	}
-	if len(p.Impact) < 3 {
-		t.Errorf("impact = %v", p.Impact)
+	if p.Impact == nil || p.Impact.Changed != 1 || p.Impact.Total() < 2 {
+		t.Errorf("impact = %+v", p.Impact)
 	}
 	hm, _ := s.Heatmap(ctx, rt, "proposals", "")
 	if hm.Values["store/store.go"] != 2 {

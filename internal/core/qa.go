@@ -35,6 +35,9 @@ type qaState struct {
 	analysis *qaAnalysis
 	key      string
 	plans    []*TestPlan
+	// perTest is per-test coverage by test ID (nil until loaded). It is
+	// replaced, never modified, so readers may keep it without the lock.
+	perTest map[string]*testCoverage
 }
 
 // QARun is a coverage run the developer started.
@@ -407,6 +410,7 @@ func (s *Service) ClearCoverage(rt *RepoHandle) {
 	st.rebuild()
 	_ = os.Remove(s.cachePath(rt))
 	st.mu.Unlock()
+	s.clearPerTest(rt)
 	s.emit(EvQA, map[string]any{"repo": rt.cfg.ID, "kind": "coverage"})
 }
 
@@ -428,6 +432,15 @@ func (s *Service) RunCoverage(rt *RepoHandle, ids []string) (*QARun, error) {
 	if len(suites) == 0 {
 		return nil, errors.New("no coverage suites selected; configure one in the QA view")
 	}
+	return s.startRun(rt, suites, nil)
+}
+
+// collectFunc stores a finished job's report itself instead of merging it
+// into the repository's coverage (per-test runs).
+type collectFunc func(su qa.Suite, report string, res *qa.Resolver, result qa.RunResult) error
+
+// startRun starts suites in the background unless a run is in progress.
+func (s *Service) startRun(rt *RepoHandle, suites []qa.Suite, collect collectFunc) (*QARun, error) {
 	st := &rt.qa
 	st.mu.Lock()
 	if st.run != nil && st.run.State == "running" {
@@ -443,7 +456,7 @@ func (s *Service) RunCoverage(rt *RepoHandle, ids []string) (*QARun, error) {
 	snapshot := run.snapshot()
 	st.mu.Unlock()
 	s.emit(EvQA, map[string]any{"repo": rt.cfg.ID, "kind": "run", "run": snapshot})
-	go s.runSuites(ctx, cancel, rt, run, suites)
+	go s.runSuites(ctx, cancel, rt, run, suites, collect)
 	return &snapshot, nil
 }
 
@@ -458,8 +471,9 @@ func contains(list []string, v string) bool {
 }
 
 // runSuites executes suites one after another, streaming log lines in
-// batches and importing each suite's report as it finishes.
-func (s *Service) runSuites(ctx context.Context, cancel context.CancelFunc, rt *RepoHandle, run *QARun, suites []qa.Suite) {
+// batches and importing each suite's report as it finishes (or handing it
+// to collect).
+func (s *Service) runSuites(ctx context.Context, cancel context.CancelFunc, rt *RepoHandle, run *QARun, suites []qa.Suite, collect collectFunc) {
 	defer cancel()
 	st := &rt.qa
 	var pending []string
@@ -561,7 +575,11 @@ func (s *Service) runSuites(ctx context.Context, cancel context.CancelFunc, rt *
 		var rep *qa.Report
 		var src qa.Source
 		if ferr == nil {
-			rep, src, ferr = parseReport(found, su.Name, res)
+			if collect != nil {
+				ferr = collect(su, found, res, result)
+			} else {
+				rep, src, ferr = parseReport(found, su.Name, res)
+			}
 		}
 		update(i, func(r *SuiteResult) {
 			r.ExitCode, r.Failures, r.DurationMS = result.ExitCode, result.Failures, dur
@@ -1400,14 +1418,21 @@ func (s *Service) TestsFor(ctx context.Context, rt *RepoHandle, ref string) (*Sy
 	if out.Function == nil {
 		out.Function = &FuncQA{ID: sym.ID, Name: sym.Qualified, File: sym.File, Line: sym.Line, EndLine: sym.EndLine, Pct: -1}
 	}
-	// Callers within four levels, to find tests that reach it indirectly.
+	out.Direct, out.Indirect = testsReaching(ix, a, sym.ID, 60)
+	return out, nil
+}
+
+// testsReaching returns the tests that call a symbol directly, and up to
+// limit that reach it through its callers (up to four levels).
+func testsReaching(ix *analysis.Index, a *qaAnalysis, symID string, limit int) (direct, indirect []qa.TestCase) {
+	direct, indirect = []qa.TestCase{}, []qa.TestCase{}
 	upstream := map[string]bool{}
-	frontier := []string{sym.ID}
+	frontier := []string{symID}
 	for depth := 0; depth < 4 && len(frontier) > 0; depth++ {
 		var next []string
 		for _, id := range frontier {
 			for _, e := range ix.Callers(id) {
-				if e.Kind == analysis.EdgeImport || e.Kind == analysis.EdgeImplement || upstream[e.From] || e.From == sym.ID {
+				if e.Kind == analysis.EdgeImport || e.Kind == analysis.EdgeImplement || upstream[e.From] || e.From == symID {
 					continue
 				}
 				upstream[e.From] = true
@@ -1417,22 +1442,22 @@ func (s *Service) TestsFor(ctx context.Context, rt *RepoHandle, ref string) (*Sy
 		frontier = next
 	}
 	for _, tc := range a.tests {
-		direct, indirect := false, false
+		isDirect, isIndirect := false, false
 		for _, id := range tc.Targets {
-			if id == sym.ID {
-				direct = true
+			if id == symID {
+				isDirect = true
 			} else if upstream[id] {
-				indirect = true
+				isIndirect = true
 			}
 		}
 		switch {
-		case direct:
-			out.Direct = append(out.Direct, tc)
-		case indirect && len(out.Indirect) < 60:
-			out.Indirect = append(out.Indirect, tc)
+		case isDirect:
+			direct = append(direct, tc)
+		case isIndirect && len(indirect) < limit:
+			indirect = append(indirect, tc)
 		}
 	}
-	return out, nil
+	return direct, indirect
 }
 
 // ---- agent test plans --------------------------------------------------------

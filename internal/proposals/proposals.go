@@ -102,8 +102,29 @@ type Proposal struct {
 	UpdatedAt time.Time     `json:"updatedAt"`
 	Changes   []*FileChange `json:"changes"`
 	Feedback  string        `json:"feedback,omitempty"`
-	// Impact holds transitive callers of changed symbols with distance.
-	Impact map[string]int `json:"impact,omitempty"`
+	// Impact counts the blast radius of the change.
+	Impact *ImpactSummary `json:"impact,omitempty"`
+}
+
+// ImpactSummary counts a change's blast radius.
+type ImpactSummary struct {
+	Changed int `json:"changed"`
+	// Callers counts callers by distance: direct, two and three calls away.
+	Callers  []int `json:"callers"`
+	Files    int   `json:"files"`
+	Packages int   `json:"packages"`
+	Entries  int   `json:"entries"`
+	// Untested counts direct callers no test reaches.
+	Untested int `json:"untested"`
+}
+
+// Total is the number of callers in the radius.
+func (s *ImpactSummary) Total() int {
+	n := 0
+	for _, c := range s.Callers {
+		n += c
+	}
+	return n
 }
 
 // Additions sums added and deleted lines across all files.

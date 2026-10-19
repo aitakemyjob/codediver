@@ -36,12 +36,10 @@ export default function GraphView({ tab }: ViewProps) {
         return api.deps(s.repoId, external, focus);
       case 'types':
         return api.types(s.repoId, String(p.scope ?? ''));
-      case 'impact':
-        return api.proposalImpact(s.repoId, String(p.proposal ?? ''));
       default:
         return api.callGraph(s.repoId, symbol, { direction, depth, includeExternal: external, includeRefs: refs });
     }
-  }, [kind, symbol, direction, depth, external, refs, focus, p.scope, p.proposal, s.repoId, s.refreshKey, nonce]);
+  }, [kind, symbol, direction, depth, external, refs, focus, p.scope, s.repoId, s.refreshKey, nonce]);
 
   const heat = useMemo(() => {
     if (!g.data || (kind !== 'impact' && kind !== 'trace')) return undefined;

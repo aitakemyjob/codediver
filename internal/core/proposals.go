@@ -81,7 +81,7 @@ func (s *Service) Propose(ctx context.Context, rt *RepoHandle, title, summary st
 			}
 		}
 		if len(changed) > 0 {
-			p.Impact = ix.Impact(changed, 3)
+			p.Impact = &s.impactOf(ctx, rt, ix, changed).Summary
 		}
 	}
 	p = s.Proposals.Add(p)
@@ -107,23 +107,4 @@ func (s *Service) ResolveProposal(rt *RepoHandle, id string, paths []string, acc
 		s.emit(EvProposal, p)
 	}
 	return p, err
-}
-
-// ProposalImpactGraph renders the blast radius of a proposal.
-func (s *Service) ProposalImpactGraph(ctx context.Context, rt *RepoHandle, id string) (any, error) {
-	p, ok := s.Proposals.Get(id)
-	if !ok || p.Repo != rt.cfg.ID {
-		return nil, fmt.Errorf("unknown proposal %q", id)
-	}
-	ix, err := s.Index(ctx, rt)
-	if err != nil {
-		return nil, err
-	}
-	var changed []string
-	for _, c := range p.Changes {
-		changed = append(changed, c.Symbols...)
-	}
-	g := ix.ImpactGraph(changed, 3)
-	g.Title = "Impact · " + p.Title
-	return g, nil
 }

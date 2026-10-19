@@ -45,6 +45,13 @@ coverprofile, LCOV, Cobertura XML, JaCoCo XML), either left in the repository
 **Run coverage** in the QA view. **Agents cannot run tests or commands**; the
 tools below say when coverage is missing or stale so the agent can ask.
 
+Merged coverage says whether a line ran, not which test ran it. When the
+developer clicks **Run these tests** in a change's Tests panel, CodeDiver runs
+the tests that reach the change one by one with per-test coverage (Go: one
+`go test -run` and coverprofile per test; pytest: coverage.py's per-test
+contexts). Change results then say which test runs which changed line
+(*measured*); otherwise tests are *estimated* from the static mapping.
+
 Tests are discovered statically for Go, JS/TS (Jest, Vitest, Mocha, Playwright,
 node:test), Python (pytest, unittest), Java/Kotlin (JUnit), C# (xUnit, NUnit,
 MSTest), Rust, Ruby (RSpec, minitest), Swift (XCTest), PHP (PHPUnit), C++
@@ -56,6 +63,7 @@ package; reach through callers comes from the call graph.
 | `get_test_overview` | Line coverage and its source/age, test and behavior counts per framework, least-covered directories and the riskiest under-tested functions. |
 | `get_coverage` | For a file: % covered, uncovered and partially covered line ranges, coverage per function. For a directory or the repo: per-file table, worst first. `show: true` opens the file with gutter markers. |
 | `get_tests_for` | Tests that exercise a function directly or through its callers, with the behavior each describes; or, for a test file, every behavior and the code each test calls. |
+| `get_tests_for_change` | For a proposal, the working tree, staged changes, a branch range or a commit: changed lines covered and not covered, the tests to run (measured or estimated, ranked by how many changed lines each runs), changed functions no test reaches, and the blast radius with each direct caller's test status. |
 | `find_test_gaps` | Functions ranked by risk (missing coverage × complexity × callers × visibility) with uncovered ranges and testability problems — hard-wired clock, randomness, env vars, network, filesystem, processes, sleeps, process exits, browser globals, high complexity — each with the refactor that fixes it. |
 | `show_test_plan` | Show a plan in the QA view: behaviors to test (kind, given/when/then, the line each exercises, existing tests that already cover it) and refactors needed first. Follow with `propose_changes` for the tests. |
 
@@ -76,8 +84,8 @@ package; reach through callers comes from the call graph.
 
 | Tool | Purpose |
 |---|---|
-| `propose_changes` | Submit a change set. Per file: `edits` (exact search/replace, each `old` must occur once) or `new_content`; `action` is `modify`, `create` or `delete`. Nothing is written until the developer accepts. Returns a proposal id, stats and blast radius. |
-| `get_proposal` | `pending`, `applied`, `rejected`, `partial` or `conflict`, per file, plus the developer's feedback. |
+| `propose_changes` | Submit a change set. Per file: `edits` (exact search/replace, each `old` must occur once) or `new_content`; `action` is `modify`, `create` or `delete`. Nothing is written until the developer accepts. Returns a proposal id, stats, the coverage of the changed lines and the blast radius: direct callers with their test status, further callers by package, and the entry points the change reaches. |
+| `get_proposal` | `pending`, `applied`, `rejected`, `partial` or `conflict`, per file, plus the developer's feedback; while pending, the coverage of the changed lines. |
 
 ### Recommended agent workflow
 
@@ -85,7 +93,9 @@ package; reach through callers comes from the call graph.
 2. `repo_overview` / `search_symbols` / `get_symbol` → orient.
 3. `trace_to` or `get_call_graph` with `show: true` → show the shape.
 4. `explain_function` or `start_walkthrough` → teach.
-5. `propose_changes` → let the developer review; poll `get_proposal`.
+5. `propose_changes` → let the developer review; poll `get_proposal`. If it
+   reports untested direct callers or uncovered lines, add tests to the
+   proposal (`get_tests_for_change` has the details).
 
 For "what isn't tested?": `get_test_overview` → `find_test_gaps` →
 `get_tests_for` → `show_test_plan` → `propose_changes` with the new tests.

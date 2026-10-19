@@ -648,7 +648,7 @@ func (s *Server) register() {
 			return sb.String(), nil
 		})
 
-	addTool(s, &mcp.Tool{Name: "git_diff", Description: "Diff summary (files, +/-, and which functions changed) or full patch. Defaults to working tree vs HEAD; pass commit to see what a single commit changed. Set show=true to open CodeDiver's visual review with heatmap and impact graph.", Annotations: readOnly("Git diff")},
+	addTool(s, &mcp.Tool{Name: "git_diff", Description: "Diff summary (files, +/-, and which functions changed) or full patch. Defaults to working tree vs HEAD; pass commit to see what a single commit changed. Lists the blast radius: direct callers with their test status, further callers by package, and the entry points the change reaches. Set show=true to open CodeDiver's visual review. For the tests covering the change use get_tests_for_change.", Annotations: readOnly("Git diff")},
 		func(a diffArgs) string {
 			if a.Commit != "" {
 				return "commit " + a.Commit
@@ -684,17 +684,9 @@ func (s *Server) register() {
 					sb.WriteString(patchText(f.FileDiff))
 				}
 			}
-			if ov.Impact != nil && len(ov.Impact.Nodes) > 0 {
-				var callers []string
-				for _, n := range ov.Impact.Nodes {
-					if n.Depth > 0 {
-						callers = append(callers, n.Label)
-					}
-				}
-				sort.Strings(callers)
-				if len(callers) > 0 {
-					fmt.Fprintf(&sb, "\nPotentially affected callers (%d): %s\n", len(callers), strings.Join(callers, ", "))
-				}
+			if ov.Impact != nil {
+				sb.WriteString("\n")
+				writeImpact(&sb, ov.Impact)
 			}
 			if ov.Note != "" {
 				sb.WriteString("\nnote: " + ov.Note + "\n")
@@ -854,7 +846,7 @@ func (s *Server) register() {
 		})
 
 	f := false
-	addTool(s, &mcp.Tool{Name: "propose_changes", Description: "Propose code changes for the developer to review visually (side-by-side diffs, a heatmap of touched files/functions, and a blast-radius graph of affected callers). Nothing is written until the developer accepts. Prefer `edits` (exact search/replace) for targeted changes and `new_content` for new files or rewrites. Returns a proposal id; poll get_proposal for the decision.",
+	addTool(s, &mcp.Tool{Name: "propose_changes", Description: "Propose code changes for the developer to review visually (side-by-side diffs, a heatmap of touched files/functions, the blast radius of affected callers and the tests that cover the change). Nothing is written until the developer accepts. Prefer `edits` (exact search/replace) for targeted changes and `new_content` for new files or rewrites. Returns a proposal id; poll get_proposal for the decision.",
 		Annotations: &mcp.ToolAnnotations{Title: "Propose changes", DestructiveHint: &f, OpenWorldHint: &f}},
 		func(a proposeArgs) string { return fmt.Sprintf("%s (%d files)", a.Title, len(a.Changes)) }, func(ctx context.Context, a proposeArgs) (string, error) {
 			rt, err := c.AgentRepo(a.Repo)
@@ -875,10 +867,16 @@ func (s *Server) register() {
 				}
 				sb.WriteString("\n")
 			}
-			if n := len(p.Impact); n > 0 {
-				fmt.Fprintf(&sb, "blast radius: %d symbols (changed + transitive callers)\n", n)
+			if r, err := c.ChangeReport(ctx, rt, core.ChangeRef{Proposal: p.ID}); err == nil {
+				sb.WriteString("\n")
+				writeChangeCoverage(&sb, &r.Coverage, false)
+				sb.WriteString("\n")
+				writeImpact(&sb, r.Impact)
+				if len(r.Coverage.Untested) > 0 || r.Coverage.Uncovered > 0 || r.Impact.Summary.Untested > 0 {
+					sb.WriteString("Consider proposing tests for the untested parts (get_tests_for_change has the details).\n")
+				}
 			}
-			sb.WriteString("Call get_proposal with this id to learn whether it was accepted.")
+			sb.WriteString("\nCall get_proposal with this id to learn whether it was accepted.")
 			return sb.String(), nil
 		})
 
@@ -903,6 +901,12 @@ func (s *Server) register() {
 			}
 			if p.Feedback != "" {
 				fmt.Fprintf(&sb, "developer feedback: %s\n", p.Feedback)
+			}
+			if p.Status == proposals.StatusPending || p.Status == proposals.StatusConflict {
+				if r, err := c.ChangeReport(ctx, rt, core.ChangeRef{Proposal: p.ID}); err == nil {
+					sb.WriteString("\n")
+					writeChangeCoverage(&sb, &r.Coverage, false)
+				}
 			}
 			return sb.String(), nil
 		})

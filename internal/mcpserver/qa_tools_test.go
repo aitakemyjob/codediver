@@ -105,3 +105,26 @@ func jsonOf(t *testing.T, v any) string {
 	}
 	return string(b)
 }
+
+func TestTestsForChange(t *testing.T) {
+	h := newHarness(t)
+	withTests(t, h, true)
+	if !strings.Contains(h.mustCall("git_status", nil), "branch main") {
+		t.Skip("git unavailable")
+	}
+	p := filepath.Join(h.dir, "api", "api.go")
+	testutil.Must(t, os.WriteFile(p, []byte(strings.Replace(testutil.Files["api/api.go"], "if o.Qty <= 0 {", "if o.Qty < 1 {", 1)), 0o644))
+	h.mustCall("get_tests_for_change", map[string]any{"show": true}, "Changed lines: 0 of 1 covered", "1 not run by any test",
+		"not covered: api/api.go:", "Tests to run", "TestCreateOrderRejectsBadJSON", "estimated", "Direct callers", "Handler.CreateOrder", "→ validate")
+	if ev := h.waitFor("focus"); !strings.Contains(jsonOf(t, ev.Data), `"pane":"tests"`) {
+		t.Errorf("focus = %+v", ev.Data)
+	}
+	out := h.mustCall("propose_changes", map[string]any{
+		"title":   "Cap qty",
+		"summary": "cap",
+		"changes": []map[string]any{{"path": "api/api.go", "edits": []map[string]any{{"old": "if o.Qty < 1 {", "new": "if o.Qty < 1 || o.Qty > 99 {"}}}},
+	}, "Changed lines: 0 of 1 covered", "Direct callers")
+	id := strings.Fields(strings.TrimPrefix(out, "proposal "))[0]
+	h.mustCall("get_tests_for_change", map[string]any{"proposal": id}, "Changed lines: 0 of 1 covered", "plus 1 new lines")
+	h.mustCall("get_proposal", map[string]any{"id": id}, "pending", "Changed lines")
+}

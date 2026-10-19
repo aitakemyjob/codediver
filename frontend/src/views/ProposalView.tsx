@@ -1,12 +1,14 @@
-import { lazy, Suspense, useState } from 'react';
-import { Check, Flame, MessageSquare, Network, Sparkles, X, FileCode2 } from 'lucide-react';
+import { lazy, Suspense, useMemo, useState } from 'react';
+import { Check, Flame, FlaskConical, MessageSquare, Network, Sparkles, X, FileCode2 } from 'lucide-react';
 import { api } from '../lib/api';
 import { actions } from '../lib/actions';
 import { useStore } from '../lib/store';
 import { basename, dirname, relTime } from '../lib/format';
 import type { FileChange } from '../lib/types';
-import { GraphCanvas } from '../graph/GraphCanvas';
 import { ChangeBar, Empty, ErrorBox, Markdown, Spinner, useAsync } from '../components/ui';
+import { ImpactPanel } from './change/ImpactPanel';
+import { TestsPanel } from './change/TestsPanel';
+import { diffMarks } from './change/change';
 import type { ViewProps } from './ViewHost';
 
 /** Loaded on demand (pulls in Monaco). */
@@ -14,26 +16,30 @@ const DiffEditor = lazy(() => import('../components/DiffEditor'));
 const actionLetter = { modify: 'M', create: 'A', delete: 'D' } as const;
 
 /**
- * Review of an agent proposal: summary, per-file diffs with rationale,
- * blast radius, and accept/reject (all or per file) with feedback.
+ * Review of an agent proposal: summary, per-file diffs with rationale and
+ * coverage markers, blast radius, the tests covering the change, and
+ * accept/reject (all or per file) with feedback.
  */
 export default function ProposalView({ tab }: ViewProps) {
   const s = useStore();
   const id = String(tab.params.id);
   const p = s.proposals.find((x) => x.id === id);
   const [selected, setSelected] = useState<string>();
-  const [pane, setPane] = useState<'diff' | 'impact'>('diff');
+  const [pane, setPane] = useState<'diff' | 'impact' | 'tests'>(tab.params.pane === 'tests' || tab.params.pane === 'impact' ? tab.params.pane : 'diff');
   const [feedback, setFeedback] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<unknown>();
-  const impact = useAsync(() => (pane === 'impact' && p ? api.proposalImpact(s.repoId, id) : Promise.resolve(undefined)), [pane, id, s.repoId, p?.updatedAt]);
+  const report = useAsync(() => (p ? api.changeReport(s.repoId, { proposal: id }) : Promise.resolve(undefined)), [id, s.repoId, p?.updatedAt, s.qaVersion]);
+  const current0 = p?.changes.find((c) => c.path === selected) ?? p?.changes[0];
+  const marks = useMemo(() => diffMarks(report.data, current0?.path ?? ''), [report.data, current0?.path]);
 
   if (!p) return <Empty icon={<Sparkles size={28} />} title="Proposal not found">It may have been dismissed, or CodeDiver was restarted.</Empty>;
   const current: FileChange | undefined = p.changes.find((c) => c.path === selected) ?? p.changes[0];
   const add = p.changes.reduce((n, c) => n + c.additions, 0);
   const del = p.changes.reduce((n, c) => n + c.deletions, 0);
   const pending = p.changes.filter((c) => c.status === 'pending' || c.status === 'conflict');
-  const impactCount = Object.keys(p.impact ?? {}).length;
+  const im = p.impact;
+  const cov = report.data?.coverage;
 
   const resolve = async (accept: boolean, paths?: string[]) => {
     setBusy(true);
@@ -58,7 +64,12 @@ export default function ProposalView({ tab }: ViewProps) {
         </h2>
         <div className="row faint" style={{ marginBottom: 10, flexWrap: 'wrap' }}>
           proposed by your agent · {relTime(p.createdAt)} · {p.changes.length} files · <span className="add">+{add}</span> <span className="del">−{del}</span>
-          {impactCount > 0 && <> · blast radius {impactCount} symbols</>}
+          {im && im.callers.some(Boolean) && (
+            <> · <button className="linkish" onClick={() => setPane('impact')}>blast radius: {im.callers[0]} direct callers, {im.callers[1] + im.callers[2]} further{im.untested ? `, ${im.untested} untested` : ''}</button></>
+          )}
+          {cov?.available && cov.lines > 0 && (
+            <> · <button className={`linkish ${cov.uncovered ? 'del' : ''}`} onClick={() => setPane('tests')}>{cov.covered} of {cov.lines} changed lines tested</button></>
+          )}
         </div>
         {p.summary && <Markdown src={p.summary} />}
         {p.feedback && (
@@ -97,6 +108,7 @@ export default function ProposalView({ tab }: ViewProps) {
             <div className="seg">
               <button className={pane === 'diff' ? 'on' : ''} onClick={() => setPane('diff')}><FileCode2 size={13} /> Diff</button>
               <button className={pane === 'impact' ? 'on' : ''} onClick={() => setPane('impact')}><Network size={13} /> Blast radius</button>
+              <button className={pane === 'tests' ? 'on' : ''} onClick={() => setPane('tests')}><FlaskConical size={13} /> Tests</button>
             </div>
             <button className="btn sm" onClick={() => actions.heatmap('proposals')}><Flame size={13} /> Heatmap</button>
             <div className="grow" />
@@ -118,16 +130,10 @@ export default function ProposalView({ tab }: ViewProps) {
           <div style={{ flex: 1, position: 'relative', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {pane === 'diff' && current && (
               <Suspense fallback={<Spinner />}>
-                <DiffEditor original={current.original} modified={current.action === 'delete' ? '' : current.proposed} language={current.language} revealLine={current.hunks?.[0]?.newStart} />
+                <DiffEditor original={current.original} modified={current.action === 'delete' ? '' : current.proposed} language={current.language} revealLine={current.hunks?.[0]?.newStart} marks={marks} />
               </Suspense>
             )}
-            {pane === 'impact' && (impact.data ? (
-              impact.data.nodes.length ? (
-                <GraphCanvas graph={impact.data} direction="RL" heat={Object.fromEntries(impact.data.nodes.map((n) => [n.id, 1 / ((n.depth ?? 0) + 1)]))} onSelect={(n) => n.symbol && s.inspectSymbol(n.symbol)} onOpen={(n) => n.file && actions.code(n.file, n.line)} />
-              ) : (
-                <Empty icon={<Network size={28} />} title="No existing callers affected">The proposal only adds new code or touches code with no known callers.</Empty>
-              )
-            ) : <Spinner />)}
+            {pane !== 'diff' && (report.error ? <ErrorBox error={report.error} /> : !report.data ? <Spinner /> : pane === 'impact' ? <ImpactPanel impact={report.data.impact} /> : <TestsPanel report={report.data} />)}
           </div>
         </div>
       </div>

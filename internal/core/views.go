@@ -285,12 +285,12 @@ type DiffFile struct {
 }
 
 type DiffOverview struct {
-	Spec      gitx.DiffSpec   `json:"spec"`
-	Files     []DiffFile      `json:"files"`
-	Additions int             `json:"additions"`
-	Deletions int             `json:"deletions"`
-	Impact    *analysis.Graph `json:"impact,omitempty"`
-	Note      string          `json:"note,omitempty"`
+	Spec      gitx.DiffSpec `json:"spec"`
+	Files     []DiffFile    `json:"files"`
+	Additions int           `json:"additions"`
+	Deletions int           `json:"deletions"`
+	Impact    *Impact       `json:"impact,omitempty"`
+	Note      string        `json:"note,omitempty"`
 }
 
 // changedSymbols maps changed line numbers onto the innermost symbols.
@@ -337,7 +337,7 @@ func (s *Service) Diff(ctx context.Context, rt *RepoHandle, spec gitx.DiffSpec, 
 		ov.Note = "symbol mapping uses the working tree, so it is approximate for commit-to-commit diffs"
 	}
 	if withImpact && ix != nil && len(changed) > 0 {
-		ov.Impact = ix.ImpactGraph(changed, 3)
+		ov.Impact = s.impactOf(ctx, rt, ix, changed)
 	}
 	return ov, nil
 }
