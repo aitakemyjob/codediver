@@ -22,6 +22,25 @@ every merged pull request.
 - When an agent shows a demo, animation, walkthrough, diagram or
   explanation for a repository you aren't viewing, a toast offers to
   switch to it.
+- **Tests for a change:** proposals, the working tree, branches and
+  commits get a Tests panel: how many changed lines tests run, which ones
+  no test runs, the tests to run, and changed functions no test reaches,
+  with coverage markers on the changed lines in the diff. **Run these
+  tests** runs Go and pytest tests one by one with per-test coverage, so
+  the panel says which test runs which line (measured) instead of
+  estimating from the test-to-code mapping. Agents get the same with
+  `get_tests_for_change`, and `propose_changes` / `get_proposal` now
+  report the coverage of the change.
+
+### Changed
+- **Blast radius:** the full caller graph is replaced by a view that
+  goes by distance. Direct callers are listed first with their test
+  status and coverage, and untested ones are flagged. Callers further out
+  are grouped by package, and the far end shows the entry points the
+  change reaches. Each caller shows its path back to the change, and a
+  package graph is available on demand. The radius is capped and grouped
+  on the server, so changing a widely used helper no longer produces a
+  graph of hundreds of nodes.
 
 ### Fixed
 - **Java / Kotlin:** tests in `src/test/java/…` are now mapped to the code

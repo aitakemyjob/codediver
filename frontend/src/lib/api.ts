@@ -4,6 +4,7 @@ import type {
   AppState, Commit, Config, FileSummary, DiffOverview, DiffSpec, FileContent, FileSymbol, FileVersions, Flow, Graph,
   GitRef, Heatmap, Overview, Proposal, Repo, RepoSummary, SearchMatch, SessionData, Settings, StatusEntry,
   SymbolDetail, CodeSymbol, TreeNode, Activity, GitInfo, QAOverview, FileCoverage, SymbolTests, TestSuite, QARun, CoverageSource,
+  ChangeRef, ChangeReport,
 } from './types';
 
 /** Calls a backend method through the active transport. */
@@ -77,8 +78,8 @@ export const api = {
   types: (repo: string, scope: string) => call<Graph>('graph.types', { repo, scope }),
   /** Control-flow graph of a function. */
   flow: (repo: string, symbol: string) => call<{ flow: Flow; symbol: CodeSymbol }>('graph.flow', { repo, symbol }),
-  /** Blast-radius graph of a proposal. */
-  proposalImpact: (repo: string, proposal: string) => call<Graph>('graph.impact', { repo, proposal }),
+  /** Tests covering a proposal or diff, and its blast radius. */
+  changeReport: (repo: string, ref: ChangeRef) => call<ChangeReport>('change.report', { repo, ...ref }),
   /** Heatmap values for a metric (optionally one proposal). */
   heatmap: (repo: string, metric: string, proposal = '') => call<Heatmap>('heatmap', { repo, metric, proposal }),
 
@@ -120,6 +121,8 @@ export const api = {
   /** Stops the running coverage run. */
   qaCancel: (repo: string) => call<void>('qa.cancel', { repo }),
   /** The last coverage run with its log. */
+  /** Runs tests one by one with per-test coverage (Go and pytest). */
+  qaRunTests: (repo: string, tests: string[]) => call<QARun>('qa.runTests', { repo, tests }),
   qaLastRun: (repo: string) => call<QARun | null>('qa.lastRun', { repo }),
   /** Imports an existing coverage report file. */
   qaImport: (repo: string, path: string) => call<CoverageSource>('qa.import', { repo, path }),

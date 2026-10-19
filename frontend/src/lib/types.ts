@@ -296,9 +296,131 @@ export interface DiffOverview {
   files: DiffFile[];
   additions: number;
   deletions: number;
-  impact?: Graph;
+  impact?: Impact;
   note?: string;
 }
+
+/** A changed symbol or one of its callers in a blast radius. */
+export interface ImpactNode {
+  id: string;
+  name: string;
+  kind: string;
+  file: string;
+  line: number;
+  package: string;
+  depth: number;
+  /** The symbol this one calls on its way to the change. */
+  via?: string;
+  viaId?: string;
+  /** Line coverage, -1 without coverage data. */
+  pct: number;
+  direct: number;
+  indirect: number;
+  tested: boolean;
+  /** A direct caller no test reaches. */
+  review?: boolean;
+  heuristic?: boolean;
+  /** Why nothing calls it: main, exported or uncalled. */
+  entry?: 'main' | 'exported' | 'uncalled';
+}
+
+export interface ImpactRing {
+  depth: number;
+  total: number;
+  tested: number;
+  avgPct: number;
+  packages: { path: string; count: number; tested: number }[];
+  nodes: ImpactNode[];
+  more?: number;
+}
+
+export interface ImpactSummary {
+  changed: number;
+  /** Callers by distance: direct, two and three calls away. */
+  callers: number[];
+  files: number;
+  packages: number;
+  entries: number;
+  untested: number;
+}
+
+/** The blast radius of a change, closest callers first. */
+export interface Impact {
+  changed: ImpactNode[];
+  rings: ImpactRing[];
+  entries: ImpactNode[];
+  beyond?: number;
+  heuristic?: number;
+  tests: boolean;
+  coverage: boolean;
+  packageEdges: { from: string; to: string; count: number }[];
+  packageDepth: Record<string, number>;
+  summary: ImpactSummary;
+}
+
+export interface ChangeLine {
+  line: number;
+  state: 'covered' | 'partial' | 'uncovered' | 'unknown';
+  tests?: string[];
+}
+
+export interface ChangeFile {
+  path: string;
+  /** Which side of the diff lines are numbered on. */
+  side: 'original' | 'modified';
+  lines: ChangeLine[];
+  covered: number;
+  uncovered: number;
+  unknown: number;
+  added?: number;
+  new?: boolean;
+  deleted?: boolean;
+  stale?: boolean;
+  measured?: boolean;
+}
+
+export interface ChangeTest {
+  id: string;
+  name: string;
+  behavior: string;
+  file: string;
+  line: number;
+  framework: string;
+  lines: number;
+  functions?: string[];
+  direct: boolean;
+  measured: boolean;
+  ran?: string;
+  failed?: boolean;
+  runnable: boolean;
+}
+
+export interface ChangeCoverage {
+  available: boolean;
+  measured: boolean;
+  stale?: boolean;
+  generated?: string;
+  approximate?: boolean;
+  files: ChangeFile[];
+  lines: number;
+  covered: number;
+  uncovered: number;
+  unknown: number;
+  added: number;
+  tests: ChangeTest[];
+  moreTests?: number;
+  untested: ImpactNode[];
+}
+
+/** Tests and blast radius of a proposal or diff. */
+export interface ChangeReport {
+  title?: string;
+  coverage: ChangeCoverage;
+  impact: Impact;
+}
+
+/** Names a change: a proposal or a git diff. */
+export type ChangeRef = { proposal: string } | { spec: DiffSpec };
 
 export interface FileVersions {
   path: string;
@@ -399,7 +521,7 @@ export interface Proposal {
   updatedAt: string;
   changes: FileChange[];
   feedback?: string;
-  impact?: Record<string, number>;
+  impact?: ImpactSummary;
 }
 
 export interface WalkStep {

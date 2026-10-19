@@ -164,7 +164,7 @@ func TestGitTools(t *testing.T) {
 	p := filepath.Join(h.dir, "store", "store.go")
 	data, _ := os.ReadFile(p)
 	testutil.Must(t, os.WriteFile(p, []byte(strings.Replace(string(data), "m.orders[o.ID] = o", "m.orders[o.ID] = o // saved", 1)), 0o644))
-	h.mustCall("git_diff", map[string]any{"show": true}, "modified store/store.go +1 −1", "~ Memory.Save", "Potentially affected callers")
+	h.mustCall("git_diff", map[string]any{"show": true}, "modified store/store.go +1 −1", "~ Memory.Save", "Blast radius:", "Direct callers", "→ Memory.Save")
 	if ev := h.waitFor(core.EvFocus); ev.Data.(core.Focus).View != "diff" {
 		t.Errorf("focus = %+v", ev.Data)
 	}
@@ -221,7 +221,7 @@ func TestProposalLifecycle(t *testing.T) {
 			{"path": "api/api.go", "edits": []map[string]any{{"old": "if o.Qty <= 0 {", "new": "if o.Qty <= 0 || o.Qty > 1000 {"}}, "rationale": "cap"},
 			{"path": "api/limits.go", "new_content": "package api\n\nconst MaxQty = 1000\n"},
 		},
-	}, "proposal p1", "modify api/api.go +1 −1", "create api/limits.go +3", "blast radius")
+	}, "proposal p1", "modify api/api.go +1 −1", "create api/limits.go +3", "Blast radius:", "No coverage report yet")
 	_ = out
 	p := h.waitFor(core.EvProposal).Data.(interface{ Additions() (int, int) })
 	if add, _ := p.Additions(); add != 4 {

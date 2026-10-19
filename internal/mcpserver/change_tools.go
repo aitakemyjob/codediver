@@ -1,0 +1,216 @@
+package mcpserver
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+
+	"github.com/aitakemyjob/codediver/internal/core"
+	"github.com/aitakemyjob/codediver/internal/gitx"
+	"github.com/aitakemyjob/codediver/internal/qa"
+)
+
+type changeTestsArgs struct {
+	Repo     string `json:"repo,omitempty" jsonschema:"repository name or id; defaults to the repo open in CodeDiver"`
+	Proposal string `json:"proposal,omitempty" jsonschema:"a proposal id from propose_changes; otherwise a git change (working tree vs HEAD by default)"`
+	Commit   string `json:"commit,omitempty" jsonschema:"what this one commit changed"`
+	Base     string `json:"base,omitempty" jsonschema:"base ref (commit, branch, tag). Empty = HEAD"`
+	Head     string `json:"head,omitempty" jsonschema:"head ref. Empty = working tree"`
+	Staged   bool   `json:"staged,omitempty" jsonschema:"the staged changes"`
+	Show     bool   `json:"show,omitempty" jsonschema:"open the change's Tests panel in CodeDiver"`
+}
+
+// registerChange adds get_tests_for_change.
+func (s *Server) registerChange() {
+	c := s.core
+	addTool(s, &mcp.Tool{Name: "get_tests_for_change", Description: "Which tests cover a change — a proposal, the working tree, staged changes, a branch or a commit: how many changed lines tests run, which changed lines no test runs, the tests to run to verify it, and changed functions no test reaches. Results say whether they are measured (the developer ran per-test coverage) or estimated (static test-to-code mapping). Also lists the blast radius: direct callers and their test status. Nothing is run.", Annotations: readOnly("Tests for change")},
+		func(a changeTestsArgs) string {
+			if a.Proposal != "" {
+				return a.Proposal
+			}
+			return diffLabel(a.Commit, a.Base, a.Head, a.Staged)
+		}, func(ctx context.Context, a changeTestsArgs) (string, error) {
+			rt, err := c.AgentRepo(a.Repo)
+			if err != nil {
+				return "", err
+			}
+			ref := core.ChangeRef{Proposal: a.Proposal}
+			if a.Proposal == "" {
+				ref.Spec = &gitx.DiffSpec{Commit: a.Commit, Base: a.Base, Head: a.Head, Staged: a.Staged}
+			}
+			r, err := c.ChangeReport(ctx, rt, ref)
+			if err != nil {
+				return "", err
+			}
+			if a.Show {
+				if a.Proposal != "" {
+					c.Show(core.Focus{View: "proposal", Repo: rt.ID(), Params: map[string]any{"id": a.Proposal, "pane": "tests"}})
+				} else {
+					c.Show(core.Focus{View: "diff", Repo: rt.ID(), Params: map[string]any{"commit": a.Commit, "base": a.Base, "head": a.Head, "staged": a.Staged, "pane": "tests"}})
+				}
+			}
+			var sb strings.Builder
+			writeChangeCoverage(&sb, &r.Coverage, true)
+			if r.Impact != nil {
+				sb.WriteString("\n")
+				writeImpact(&sb, r.Impact)
+			}
+			return sb.String(), nil
+		})
+}
+
+// diffLabel names a git change for the activity feed.
+func diffLabel(commit, base, head string, staged bool) string {
+	switch {
+	case commit != "":
+		return "commit " + commit
+	case staged:
+		return "staged"
+	case base == "" && head == "":
+		return "working tree"
+	}
+	return base + ".." + head
+}
+
+// writeChangeCoverage describes a change's coverage: the line counts, the
+// tests and, when detail is set, the uncovered lines per file.
+func writeChangeCoverage(sb *strings.Builder, cc *core.ChangeCoverage, detail bool) {
+	kind := "estimated from the static test mapping (ask the developer to click Run these tests in the Tests panel to measure)"
+	if cc.Measured {
+		kind = "measured by per-test runs"
+	}
+	switch {
+	case !cc.Available:
+		sb.WriteString("No coverage report yet, so changed lines can't be checked; ask the developer to click Run coverage in the QA view.\n")
+	case cc.Lines == 0 && cc.Added > 0:
+		fmt.Fprintf(sb, "The change only adds code: %d new lines no test has run yet.\n", cc.Added)
+	case cc.Lines == 0:
+		sb.WriteString("No executable lines changed.\n")
+	default:
+		fmt.Fprintf(sb, "Changed lines: %d of %d covered by tests", cc.Covered, cc.Lines)
+		if cc.Uncovered > 0 {
+			fmt.Fprintf(sb, ", %d not run by any test", cc.Uncovered)
+		}
+		if cc.Unknown > 0 {
+			fmt.Fprintf(sb, ", %d in files without coverage data", cc.Unknown)
+		}
+		if cc.Added > 0 {
+			fmt.Fprintf(sb, "; plus %d new lines", cc.Added)
+		}
+		sb.WriteString(".\n")
+	}
+	if cc.Stale {
+		sb.WriteString("Coverage is stale: files changed after the last coverage run.\n")
+	}
+	if cc.Approximate {
+		sb.WriteString("Line numbers come from a commit and are matched against current coverage, so treat them as approximate.\n")
+	}
+	if detail {
+		for _, f := range cc.Files {
+			var miss []int
+			for _, l := range f.Lines {
+				if l.State == "uncovered" {
+					miss = append(miss, l.Line)
+				}
+			}
+			if len(miss) > 0 {
+				fmt.Fprintf(sb, "  not covered: %s:%s\n", f.Path, qa.Ranges(miss))
+			}
+		}
+	}
+	if len(cc.Untested) > 0 {
+		names := make([]string, len(cc.Untested))
+		for i, n := range cc.Untested {
+			names[i] = n.Name
+		}
+		fmt.Fprintf(sb, "Changed functions no test reaches: %s\n", strings.Join(names, ", "))
+	}
+	if len(cc.Tests) == 0 {
+		sb.WriteString("No tests exercise the change.\n")
+		return
+	}
+	fmt.Fprintf(sb, "Tests to run (%d, %s):\n", len(cc.Tests)+cc.MoreTests, kind)
+	limit := len(cc.Tests)
+	if !detail {
+		limit = min(limit, 8)
+	}
+	for _, t := range cc.Tests[:limit] {
+		var notes []string
+		if t.Measured {
+			notes = append(notes, fmt.Sprintf("runs %d changed lines", t.Lines))
+		}
+		if t.Direct {
+			notes = append(notes, "calls the changed code")
+		} else if len(t.Functions) > 0 {
+			notes = append(notes, "reaches "+strings.Join(t.Functions, ", "))
+		}
+		if t.Failed {
+			notes = append(notes, "FAILED last run")
+		}
+		fmt.Fprintf(sb, "- %s  %s:%d", t.Name, t.File, t.Line)
+		if len(notes) > 0 {
+			fmt.Fprintf(sb, " (%s)", strings.Join(notes, "; "))
+		}
+		sb.WriteString("\n")
+	}
+	if more := len(cc.Tests) - limit + cc.MoreTests; more > 0 {
+		fmt.Fprintf(sb, "  … %d more\n", more)
+	}
+}
+
+// writeImpact describes a blast radius closest first: direct callers by
+// name, further rings as counts, then where the change surfaces.
+func writeImpact(sb *strings.Builder, im *core.Impact) {
+	if len(im.Rings) == 0 {
+		sb.WriteString("Blast radius: no existing callers.\n")
+		return
+	}
+	sum := im.Summary
+	fmt.Fprintf(sb, "Blast radius: %d callers in %d files (direct %d · 2 calls away %d · 3 calls away %d)", sum.Total(), sum.Files, sum.Callers[0], sum.Callers[1], sum.Callers[2])
+	if im.Beyond > 0 {
+		fmt.Fprintf(sb, ", %d paths continue further", im.Beyond)
+	}
+	sb.WriteString(".\n")
+	for _, r := range im.Rings {
+		if r.Depth != 1 {
+			continue
+		}
+		fmt.Fprintf(sb, "Direct callers (most likely to break)")
+		if im.Tests {
+			fmt.Fprintf(sb, ", %d of %d tested", r.Tested, r.Total)
+		}
+		sb.WriteString(":\n")
+		for _, n := range r.Nodes[:min(len(r.Nodes), 25)] {
+			fmt.Fprintf(sb, "- %s  %s:%d → %s", n.Name, n.File, n.Line, n.Via)
+			switch {
+			case n.Review:
+				sb.WriteString("  UNTESTED")
+			case n.Pct >= 0:
+				fmt.Fprintf(sb, "  %s covered", pct(n.Pct))
+			}
+			sb.WriteString("\n")
+		}
+		if more := r.Total - min(len(r.Nodes), 25); more > 0 {
+			fmt.Fprintf(sb, "  … %d more\n", more)
+		}
+	}
+	for _, r := range im.Rings {
+		if r.Depth == 1 {
+			continue
+		}
+		var pk []string
+		for _, p := range r.Packages[:min(len(r.Packages), 6)] {
+			pk = append(pk, fmt.Sprintf("%s %d", p.Path, p.Count))
+		}
+		fmt.Fprintf(sb, "%d calls away: %d callers (%s)\n", r.Depth, r.Total, strings.Join(pk, ", "))
+	}
+	if len(im.Entries) > 0 {
+		var es []string
+		for _, e := range im.Entries[:min(len(im.Entries), 10)] {
+			es = append(es, e.Name)
+		}
+		fmt.Fprintf(sb, "Surfaces at: %s\n", strings.Join(es, ", "))
+	}
+}

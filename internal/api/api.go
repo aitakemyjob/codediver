@@ -254,8 +254,11 @@ func (a *API) registerCode() {
 			return map[string]any{"flow": fl, "symbol": sym}, nil
 		})
 	})
-	a.methods["graph.impact"] = method(func(ctx context.Context, in struct{ Repo, Proposal string }) (any, error) {
-		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { return c.ProposalImpactGraph(ctx, rt, in.Proposal) })
+	a.methods["change.report"] = method(func(ctx context.Context, in struct {
+		Repo string `json:"repo"`
+		core.ChangeRef
+	}) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { return c.ChangeReport(ctx, rt, in.ChangeRef) })
 	})
 	a.methods["heatmap"] = method(func(ctx context.Context, in struct{ Repo, Metric, Proposal string }) (any, error) {
 		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { return c.Heatmap(ctx, rt, in.Metric, in.Proposal) })
@@ -432,6 +435,12 @@ func (a *API) registerQA() {
 		Suites []string `json:"suites"`
 	}) (any, error) {
 		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { return c.RunCoverage(rt, in.Suites) })
+	})
+	a.methods["qa.runTests"] = method(func(ctx context.Context, in struct {
+		Repo  string   `json:"repo"`
+		Tests []string `json:"tests"`
+	}) (any, error) {
+		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { return c.RunTests(ctx, rt, in.Tests) })
 	})
 	a.methods["qa.cancel"] = method(func(ctx context.Context, in repoReq) (any, error) {
 		return withRepo(in.Repo, func(rt *core.RepoHandle) (any, error) { c.CancelCoverage(rt); return nil, nil })

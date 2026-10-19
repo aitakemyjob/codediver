@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
-import { Columns2, Flame, GitCommit, GitCompare, Network, Rows2, Workflow, X } from 'lucide-react';
+import { Columns2, Flame, FlaskConical, GitCommit, GitCompare, Network, Rows2, Workflow, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { actions } from '../lib/actions';
 import { useStore } from '../lib/store';
 import { basename, dirname } from '../lib/format';
 import type { DiffFile, DiffSpec } from '../lib/types';
-import { GraphCanvas } from '../graph/GraphCanvas';
 import { ChangeBar, Empty, ErrorBox, Spinner, useAsync } from '../components/ui';
+import { ChangePane, type PaneKind } from './change/ChangePane';
+import { diffMarks } from './change/change';
 import type { ViewProps } from './ViewHost';
 
 /** Loaded on demand (pulls in Monaco). */
@@ -45,8 +46,8 @@ export function FileList({ files, selected, onSelect }: { files: DiffFile[]; sel
 }
 
 /**
- * Review screen: pick revisions, browse changed files side by side, and
- * see the blast radius of the change.
+ * Review screen: pick revisions, browse changed files side by side with
+ * coverage markers, and see the blast radius and tests of the change.
  */
 export default function DiffView({ tab }: ViewProps) {
   const s = useStore();
@@ -57,8 +58,9 @@ export default function DiffView({ tab }: ViewProps) {
   );
   const [selected, setSelected] = useState<string | undefined>(tab.params.select as string | undefined);
   const [inline, setInline] = useState(false);
-  const [showImpact, setShowImpact] = useState(false);
-  const ov = useAsync(() => api.diff(s.repoId, spec, true), [s.repoId, spec, s.refreshKey, s.agentPulse]);
+  const [pane, setPane] = useState<PaneKind | undefined>(tab.params.pane === 'tests' || tab.params.pane === 'impact' ? tab.params.pane : undefined);
+  const ov = useAsync(() => api.diff(s.repoId, spec, false), [s.repoId, spec, s.refreshKey, s.agentPulse]);
+  const report = useAsync(() => api.changeReport(s.repoId, { spec }), [s.repoId, spec, s.refreshKey, s.agentPulse, s.qaVersion]);
   const refs = useAsync(() => api.refs(s.repoId), [s.repoId]);
   useEffect(() => {
     if (tab.params.select) setSelected(tab.params.select as string);
@@ -72,6 +74,8 @@ export default function DiffView({ tab }: ViewProps) {
   const changedIds = useMemo(() => Object.fromEntries(files.flatMap((f) => (f.symbols ?? []).map((x) => [x.id, 1]))), [files]);
   const totalSyms = Object.keys(changedIds).length;
   const firstChanged = current?.hunks?.[0]?.newStart;
+  const marks = useMemo(() => diffMarks(report.data, current?.path ?? ''), [report.data, current?.path]);
+  const toggle = (k: PaneKind) => setPane(pane === k ? undefined : k);
 
   return (
     <>
@@ -109,7 +113,8 @@ export default function DiffView({ tab }: ViewProps) {
         )}
         <div className="grow" />
         <button className="btn sm" onClick={() => actions.heatmap('changes')}><Flame size={13} /> Heatmap</button>
-        <button className={`btn sm ${showImpact ? 'active' : ''}`} onClick={() => setShowImpact(!showImpact)} disabled={!ov.data?.impact}><Network size={13} /> Blast radius</button>
+        <button className={`btn sm ${pane === 'impact' ? 'active' : ''}`} onClick={() => toggle('impact')} disabled={!files.length}><Network size={13} /> Blast radius</button>
+        <button className={`btn sm ${pane === 'tests' ? 'active' : ''}`} onClick={() => toggle('tests')} disabled={!files.length}><FlaskConical size={13} /> Tests</button>
         <div className="seg">
           <button className={!inline ? 'on' : ''} onClick={() => setInline(false)} title="Side by side"><Columns2 size={13} /></button>
           <button className={inline ? 'on' : ''} onClick={() => setInline(true)} title="Inline"><Rows2 size={13} /></button>
@@ -130,21 +135,13 @@ export default function DiffView({ tab }: ViewProps) {
                 <Empty icon={<GitCompare size={28} />} title="Binary file">No textual diff available.</Empty>
               ) : versions.data ? (
                 <Suspense fallback={<Spinner />}>
-                  <DiffEditor original={versions.data.original} modified={versions.data.modified} language={versions.data.language} inline={inline} revealLine={firstChanged} />
+                  <DiffEditor original={versions.data.original} modified={versions.data.modified} language={versions.data.language} inline={inline} revealLine={firstChanged} marks={marks} />
                 </Suspense>
               ) : (
                 <Spinner />
               )}
             </div>
-            {showImpact && ov.data?.impact && (
-              <div className="bottom-pane">
-                <div className="toolbar" style={{ minHeight: 36 }}>
-                  <b>Blast radius</b>
-                  <span className="faint">changed functions and everything that calls them (3 levels)</span>
-                </div>
-                <GraphCanvas graph={ov.data.impact} direction="RL" heat={Object.fromEntries(ov.data.impact.nodes.map((n) => [n.id, 1 / ((n.depth ?? 0) + 1)]))} onSelect={(n) => n.symbol && s.inspectSymbol(n.symbol)} onOpen={(n) => n.file && actions.code(n.file, n.line)} compact />
-              </div>
-            )}
+            {pane && <ChangePane kind={pane} report={report} onClose={() => setPane(undefined)} />}
           </div>
         </div>
       )}

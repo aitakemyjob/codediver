@@ -197,9 +197,15 @@ func TestGraphs(t *testing.T) {
 	if !contains(ids["go:example.com/app.main"].Badges, "entry") {
 		t.Errorf("main should be an entry point: %+v", ids["go:example.com/app.main"])
 	}
-	impact := ix.Impact([]string{memGet}, 3)
-	if impact["go:example.com/app.main"] == 0 || impact[memGet] != 0 {
-		t.Errorf("impact = %v", impact)
+	impact := ix.Reach([]string{memGet}, 3, nil)
+	if impact.Dist["go:example.com/app.main"] == 0 || impact.Dist[memGet] != 0 {
+		t.Errorf("impact = %v", impact.Dist)
+	}
+	// Each caller points one step closer to the change, ending at it.
+	for id := "go:example.com/app.main"; id != memGet; id = impact.Via[id] {
+		if impact.Via[id] == "" || impact.Dist[impact.Via[id]] != impact.Dist[id]-1 {
+			t.Fatalf("via chain broken at %s: %v", id, impact.Via)
+		}
 	}
 	deps := ix.PackageGraph(true, "")
 	if len(deps.Edges) < 2 {

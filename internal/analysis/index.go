@@ -421,18 +421,34 @@ func (ix *Index) TraceTo(id string, depth int, maxNodes int) *Graph {
 	return g
 }
 
-// Impact returns the transitive callers ("blast radius") of a set of
-// changed symbols, with distance from the change.
-func (ix *Index) Impact(changed []string, depth int) map[string]int {
+// Reach is the blast radius of a change: the transitive callers of the
+// changed symbols, each with its distance from the change and the symbol
+// it calls on the shortest way there.
+type Reach struct {
+	// Dist is 0 for changed symbols and n for callers n calls away.
+	Dist map[string]int
+	// Via maps a caller to the symbol one step closer to the change.
+	Via map[string]string
+	// Beyond counts callers at the depth limit that have callers of their
+	// own, so the radius continues past what was walked.
+	Beyond int
+}
+
+// Reach walks callers of changed (skipping import and implements edges)
+// up to depth calls away. skip, when set, leaves symbols out of the walk,
+// such as test functions.
+func (ix *Index) Reach(changed []string, depth int, skip func(*Symbol) bool) *Reach {
 	if depth <= 0 {
 		depth = 3
 	}
-	dist := map[string]int{}
+	r := &Reach{Dist: map[string]int{}, Via: map[string]string{}}
 	var frontier []string
 	for _, c := range changed {
 		if _, ok := ix.Symbols[c]; ok {
-			dist[c] = 0
-			frontier = append(frontier, c)
+			if _, dup := r.Dist[c]; !dup {
+				r.Dist[c] = 0
+				frontier = append(frontier, c)
+			}
 		}
 	}
 	for d := 1; d <= depth && len(frontier) > 0; d++ {
@@ -442,42 +458,40 @@ func (ix *Index) Impact(changed []string, depth int) map[string]int {
 				if e.Kind == EdgeImport || e.Kind == EdgeImplement {
 					continue
 				}
-				if _, ok := dist[e.From]; !ok {
-					dist[e.From] = d
-					next = append(next, e.From)
+				if _, ok := r.Dist[e.From]; ok {
+					continue
 				}
+				if s := ix.Symbols[e.From]; s == nil || (skip != nil && skip(s)) {
+					continue
+				}
+				r.Dist[e.From] = d
+				r.Via[e.From] = cur
+				next = append(next, e.From)
 			}
 		}
 		frontier = next
 	}
-	return dist
-}
-
-// ImpactGraph renders changed symbols plus their callers as a graph.
-func (ix *Index) ImpactGraph(changed []string, depth int) *Graph {
-	dist := ix.Impact(changed, depth)
-	g := &Graph{Nodes: []GraphNode{}, Edges: []GraphEdge{}, Kind: "impact", Title: "Change impact", Direction: "RL"}
-	for id, d := range dist {
-		s := ix.Symbols[id]
-		n := ix.symbolNode(s)
-		n.Depth = d
-		n.Root = d == 0
-		n.Heat = 1 / float64(d+1)
-		if d == 0 {
-			n.Badges = append(n.Badges, "changed")
-		}
-		g.Nodes = append(g.Nodes, n)
-	}
-	for id := range dist {
+	// Whatever the last ring calls into continues further out.
+	for _, id := range frontier {
 		for _, e := range ix.Callers(id) {
-			if _, ok := dist[e.From]; ok && e.Kind != EdgeImport && e.Kind != EdgeImplement {
-				key := e.From + "→" + e.To + "|" + string(e.Kind)
-				g.Edges = append(g.Edges, GraphEdge{ID: key, From: e.From, To: e.To, Kind: string(e.Kind), Count: max(1, len(e.Lines)), Heuristic: e.Heuristic})
+			if _, ok := r.Dist[e.From]; !ok && e.Kind != EdgeImport && e.Kind != EdgeImplement {
+				r.Beyond++
+				break
 			}
 		}
 	}
-	sortNodes(g)
-	return g
+	return r
+}
+
+// HasCallers reports whether anything calls id (imports and implements
+// don't count).
+func (ix *Index) HasCallers(id string) bool {
+	for _, e := range ix.Callers(id) {
+		if e.Kind != EdgeImport && e.Kind != EdgeImplement {
+			return true
+		}
+	}
+	return false
 }
 
 // PackageGraph renders internal package dependencies. External imports can

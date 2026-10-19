@@ -520,6 +520,28 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; min-height: 
 .suite-field span { padding-top: 6px; }
 .suite-field .input { height: 28px; font-size: 12px; }
 .suite-field textarea.input { min-height: 46px; height: auto; }
+/* Blast radius and the tests of a change. Distance drives visual weight:
+   direct callers full strength, further rings quieter. */
+.impact { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.impact-strip { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; flex: none; }
+.impact-tile { display: flex; flex-direction: column; padding: 4px 12px 4px 0; margin-right: 4px; border-right: 1px solid var(--border); min-width: 92px; }
+.impact-n { font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.impact-l { font-size: 11px; color: var(--text-2); }
+.impact-s { font-size: 11px; }
+.impact-list { flex: 1; padding: 4px 6px 12px; }
+.impact-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 4px; font-size: 12.5px; }
+.impact-head.clickable { cursor: pointer; border-radius: 6px; }
+.impact-head.clickable:hover { background: var(--bg-2); }
+.impact-ring.d2 .impact-row { opacity: 0.85; font-size: 12px; }
+.impact-ring.d3 .impact-row { opacity: 0.7; font-size: 12px; }
+.impact-row { padding-left: 30px; }
+.impact-row.review { box-shadow: inset 3px 0 0 var(--err); }
+.change-tests { flex: 1; padding: 4px 6px 12px; }
+.change-sum { display: flex; align-items: center; gap: 10px; padding: 10px 10px 8px; font-size: 13px; flex-wrap: wrap; }
+.change-note { margin: 0 10px 6px; padding: 6px 10px; border-radius: 6px; background: var(--bg-2); color: var(--text-2); font-size: 12px; }
+.change-note.warn { background: var(--warn-soft); color: var(--warn); }
+.linkish { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; }
+.linkish:hover { text-decoration: underline; }
 .run-panel { border-bottom: 1px solid var(--border); background: var(--bg-1); flex: none; }
 .run-log { margin: 0; max-height: 200px; overflow: auto; padding: 8px 12px; font-family: var(--font-mono); font-size: 11.5px; line-height: 1.5; color: var(--text-2); background: var(--bg); border-top: 1px solid var(--border); white-space: pre-wrap; word-break: break-word; }
 .run-errors { padding: 6px 12px; font-size: 12px; color: var(--err); border-top: 1px solid var(--border); }

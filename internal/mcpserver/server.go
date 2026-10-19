@@ -27,9 +27,10 @@ Use it to help the developer understand and change code VISUALLY:
   function, rendered next to its control-flow graph), show_diagram (mermaid or nodes/edges) and annotate_code.
 - Test with get_test_overview, get_coverage, get_tests_for and find_test_gaps (coverage, behaviors, untested
   functions and what makes them hard to test); show_test_plan puts a plan for closing a gap on screen.
+  get_tests_for_change says which tests cover a proposal, the working tree or a commit.
   You cannot run tests: ask the developer to click Run coverage in the QA view when coverage is missing or stale.
-- Change code ONLY with propose_changes. The developer reviews a visual diff, heatmap and blast-radius
-  graph, then accepts or rejects; poll get_proposal for the decision and feedback. Never assume a proposal
+- Change code ONLY with propose_changes. The developer reviews a visual diff, heatmap, blast radius and
+  the tests covering the change, then accepts or rejects; poll get_proposal for the decision and feedback. Never assume a proposal
   was applied until get_proposal says so.
 
 Paths are repo-relative. Symbols can be referenced by id, qualified name (Type.Method), bare name or file:line.
@@ -60,6 +61,7 @@ func New(c *core.Service) *Server {
 	})
 	s.register()
 	s.registerQA()
+	s.registerChange()
 	return s
 }
 
