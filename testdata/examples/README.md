@@ -5,6 +5,11 @@ coverage report and gaps put there on purpose. Use them to try CodeDiver's
 features, to demo them, and as fixtures: `internal/core/examples_test.go`
 checks what CodeDiver finds in each, so the table below stays true.
 
+Browsing an example needs no toolchain: its coverage report is committed.
+To run its tests from CodeDiver (**Run coverage**) or regenerate the
+report, install its toolchain first: see
+[Installing the toolchains](TOOLCHAINS.md).
+
 | Example | Language | Tests | Coverage report |
 |---|---|---|---|
 | [`go-service`](go-service) | Go | go test | `coverage.out` (coverprofile) |
@@ -110,7 +115,9 @@ every language and the known gaps, see
 
 The reports are committed so the QA view, the demo script and
 `go test ./internal/core -run Example` work without these toolchains. You
-only need a toolchain to regenerate an example's report after changing it.
+only need a toolchain to regenerate an example's report after changing it,
+or to run its tests from CodeDiver. [TOOLCHAINS.md](TOOLCHAINS.md) says how
+to install each one, with or without admin rights.
 
 ### Toolchains
 
