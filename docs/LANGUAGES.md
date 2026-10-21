@@ -90,8 +90,7 @@ much of this matrix in tests.
 ## Known limitations
 
 Each item links the issue that plans its fix, or says *inherent* when it's
-a limit of how the analysis works. Small fixes to the lexical patterns are
-tracked in [#59] (planned for 0.2.0), deeper analysis in [#18].
+a limit of how the analysis works. Deeper analysis is tracked in [#18].
 
 ### Go
 
@@ -117,27 +116,21 @@ tracked in [#59] (planned for 0.2.0), deeper analysis in [#18].
 
 ### TypeScript and JavaScript
 
-Definitions that aren't found, so their calls and callers are lost:
-
-```ts
-class SqlStore {
-  constructor(db: Db) { this.init() }    // constructor isn't a symbol [#61]
-  save(o: Order) { return this.write(o) } // method with its body on the signature line [#61]
-  onClick = () => { this.save(o) }        // class field holding an arrow function [#61]
-}
-
-export default {
-  async fetch(req, env) { return route(req) } // object-literal method: Workers, Durable Objects [#61]
-}
-
-export default function () { setup() }   // anonymous default export [#61]
-```
+How definitions are named:
+- **Object literals:** methods and function properties of an object
+  literal assigned to a name or default-exported (Workers'
+  `export default { fetch() {…} }`, `const api = { list() {…} }`) are
+  qualified by the object's name: `default.fetch`, `api.list`. The object
+  itself isn't a symbol.
+- **Default exports:** an anonymous default export is called `default`.
+- **Constructors:** `new Foo()` links to `Foo`'s `constructor` when it has
+  one.
 
 Edges that are wrong or missing:
 - `cache.save()` links to the first class with a `save` method, which may be
   the wrong class. *[#67]*
-- `obj?.helper()` links to a free function called `helper`. *[#62]*
-- `super.handle()` links to the calling class's own `handle`. *[#62]*
+- `super.handle()` links to `handle` on the class named by `extends`.
+  When that class isn't in the repository, no edge is drawn.
 - Functions passed as values get no edge: `items.map(format)`,
   `promise.then(render)`, `emitter.on('done', notify)`. React components
   passed as props are an exception. *[#68]*
@@ -150,7 +143,6 @@ Edges that are wrong or missing:
   Object methods) show no callers. *[#75]*
 
 Dependencies:
-- A multi-line `import { a,\n b } from './x'` is missed. *[#62]*
 - Path aliases (`@/lib/x`, tsconfig `paths`) and workspace package names
   aren't resolved. *[#70]*
 - Dynamic `import('./x')` is ignored. *[#70]* `require()` and
@@ -163,8 +155,6 @@ Dependencies:
   `Cache.save`. *[#67]*
 - **Import aliases:** `from .store import Store as S` then `S()` doesn't
   link to `Store`. *[#66]*
-- **f-strings:** calls inside them are lost with the string text
-  (`f"{fmt(o)}"`). *[#64]*
 - **Functions passed as values** get no edge: `sorted(xs, key=keyfn)`,
   `map(fn, xs)`, callbacks. *[#68]*
 - **Implicit calls:** `@property` reads and dunder methods (`__enter__`,
@@ -174,17 +164,9 @@ Dependencies:
 
 ### Java, Kotlin, C# and Rust
 
-- **Java:** methods with an empty or single-line body
-  (`void validate(Order o) {}`) aren't symbols. *[#63]*
 - **Java and C#:** interface method declarations aren't symbols. A call
   through an interface links by name to a class with that method. *[#76]*
 - **Java:** method references (`this::save`) get no edge. *[#68]*
-- **C#:** expression-bodied methods
-  (`void Validate(Order o) => Check(o);`) aren't symbols. *[#63]*
-- **Kotlin:** expression-bodied functions (`fun validate(o) = check(o)`)
-  are found, but their end runs into the next function. *[#63]*
-- **Rust:** `fn new()` isn't a symbol, so `Store::new()` has no target.
-  *[#63]*
 - **Rust:** `impl Trait for Type` isn't linked to the trait. *[#76]*
   Calls inside macros like `println!` are found.
 
@@ -209,11 +191,6 @@ Dependencies:
   on a path.
 
 [#18]: https://github.com/aitakemyjob/codediver/issues/18
-[#59]: https://github.com/aitakemyjob/codediver/issues/59
-[#61]: https://github.com/aitakemyjob/codediver/issues/61
-[#62]: https://github.com/aitakemyjob/codediver/issues/62
-[#63]: https://github.com/aitakemyjob/codediver/issues/63
-[#64]: https://github.com/aitakemyjob/codediver/issues/64
 [#65]: https://github.com/aitakemyjob/codediver/issues/65
 [#66]: https://github.com/aitakemyjob/codediver/issues/66
 [#67]: https://github.com/aitakemyjob/codediver/issues/67
