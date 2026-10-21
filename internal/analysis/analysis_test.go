@@ -879,6 +879,18 @@ pub fn run() {
 			t.Errorf("%s should call %s: %+v", e[0], e[1], ix.Callees(e[0]))
 		}
 	}
+	// int.Parse and String::new are the platform's, not the repo's.
+	root2, files2 := writeTree(t, map[string]string{"Handler.cs": `public class Handler
+{
+    private static int Parse(string s)
+    {
+        return int.Parse(s);
+    }
+}
+`})
+	if es := Build(root2, files2, testLang).Callees("h:Handler.cs#Handler.Parse"); len(es) != 0 {
+		t.Errorf("int.Parse linked to the repository's Parse: %+v", es)
+	}
 	// check's lines belong to check, not to the expression-bodied validate.
 	if hasEdge(ix, "h:Store.kt#Store.total", "h:Store.kt#Store.check", EdgeCall) {
 		t.Error("total's extent ran into the next function")

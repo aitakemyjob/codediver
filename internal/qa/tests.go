@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+
+	"github.com/aitakemyjob/codediver/internal/analysis"
 )
 
 // Test kinds.
@@ -81,6 +83,33 @@ func IsTestFile(p string) bool {
 // scanned (Rust keeps unit tests in #[cfg(test)] modules beside the code).
 func MayContainTests(p, content string) bool {
 	return strings.HasSuffix(p, ".rs") && strings.Contains(content, "#[test]")
+}
+
+// cfgTestRe marks a Rust module compiled only for tests.
+var cfgTestRe = regexp.MustCompile(`^\s*#\[cfg\(test\)\]`)
+
+// TestModules returns the line ranges (1-based, inclusive) of Rust
+// #[cfg(test)] modules in content: unit tests and their helpers, which
+// are test code even though the file isn't a test file.
+func TestModules(content string) [][2]int {
+	lines := strings.Split(analysis.MaskCode(content, "rust"), "\n")
+	var out [][2]int
+	for i := 0; i < len(lines); i++ {
+		if !cfgTestRe.MatchString(lines[i]) {
+			continue
+		}
+		depth, opened := 0, false
+		for j := i; j < len(lines); j++ {
+			depth += strings.Count(lines[j], "{") - strings.Count(lines[j], "}")
+			opened = opened || strings.Contains(lines[j], "{")
+			if opened && depth <= 0 {
+				out = append(out, [2]int{i + 1, j + 1})
+				i = j
+				break
+			}
+		}
+	}
+	return out
 }
 
 // Discover finds the tests declared in a file.

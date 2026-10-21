@@ -37,8 +37,8 @@ type Suite struct {
 }
 
 // DetectSuites proposes a coverage suite for each project found in the
-// repository (go.mod, package.json with Vitest/Jest, Python, Cargo, Maven,
-// Gradle, .NET). read returns a file's content, or "" if unreadable.
+// repository (go.mod, package.json with Vitest/Jest, Python, RSpec, Cargo,
+// Maven, Gradle, .NET). read returns a file's content, or "" if unreadable.
 func DetectSuites(files []string, read func(string) string) []Suite {
 	var out []Suite
 	add := func(s Suite) {
@@ -88,6 +88,15 @@ func DetectSuites(files []string, read func(string) string) []Suite {
 				py[dir] = true
 				add(Suite{Name: "pytest", Dir: dir, Tool: "pytest", Command: "python -m pytest --cov --cov-report=lcov:{out}/coverage.lcov", Report: "{out}/coverage.lcov"})
 			}
+		case base == "Gemfile" || base == ".rspec":
+			// RSpec writes LCOV through simplecov-lcov when the project
+			// configures it (spec_helper), at coverage/lcov.info.
+			if base == "Gemfile" {
+				if c := read(f); !strings.Contains(c, "rspec") {
+					continue
+				}
+			}
+			add(Suite{Name: "RSpec", Dir: dir, Tool: "rspec", Command: "bundle exec rspec", Report: "coverage/lcov.info"})
 		case base == "Cargo.toml":
 			// Only the outermost Cargo project; workspaces cover members.
 			inner := false
@@ -142,7 +151,7 @@ func hasFile(files []string, p string) bool {
 var KnownReports = []string{
 	"coverage.out", "cover.out", "coverage.txt", "c.out", "profile.cov", "coverage.cov",
 	"coverage/lcov.info", "lcov.info", "coverage.lcov",
-	"coverage.xml", "cobertura.xml", "coverage/cobertura-coverage.xml",
+	"coverage.xml", "cobertura.xml", "coverage/cobertura-coverage.xml", "coverage/coverage.cobertura.xml",
 	"target/site/jacoco/jacoco.xml", "build/reports/jacoco/test/jacocoTestReport.xml",
 }
 

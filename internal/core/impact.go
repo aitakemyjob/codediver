@@ -132,8 +132,7 @@ type Impact struct {
 // supplies test status; without it nodes carry no test information.
 func (s *Service) impactOf(ctx context.Context, rt *RepoHandle, ix *analysis.Index, changed []string) *Impact {
 	a, _ := s.qaAnalyze(ctx, rt)
-	isTest := func(sym *analysis.Symbol) bool { return qa.IsTestFile(sym.File) }
-	r := ix.Reach(changed, impactDepth, isTest)
+	r := ix.Reach(changed, impactDepth, a.isTestCode)
 	return buildImpact(ix, r, a, s.impactCoverage(rt, a))
 }
 

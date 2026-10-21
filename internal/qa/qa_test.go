@@ -375,10 +375,27 @@ func TestHints(t *testing.T) {
 		t.Errorf("clock hint = %+v", hints[0])
 	}
 	// Mail, sockets and other clients count as network too.
-	for _, line := range []string{"with smtplib.SMTP(host) as s:", "return smtp.SendMail(addr, a, from, to, msg)", "sock = socket.create_connection((h, p))", "r = httpx.get(url)", "ws := new WebSocket(url)"} {
+	for _, line := range []string{"with smtplib.SMTP(host) as s:", "return smtp.SendMail(addr, a, from, to, msg)", "sock = socket.create_connection((h, p))", "r = httpx.get(url)", "ws := new WebSocket(url)",
+		"let mut conn = TcpStream::connect(addr)?;", "await Http.PostAsJsonAsync(url, body);", "Net::HTTP.post(URI(url), body)"} {
 		if hs := Hints([]string{line}, 1, 1, 1, 0); len(hs) != 1 || hs[0].Kind != HintNetwork {
 			t.Errorf("%q hints = %+v", line, hs)
 		}
+	}
+	// A repository method that happens to end in Async is not network.
+	if hs := Hints([]string{"await Notifier.SendAsync(o);"}, 1, 1, 1, 0); len(hs) != 0 {
+		t.Errorf("SendAsync hints = %+v", hs)
+	}
+	for line, kind := range map[string]string{"Time.now.utc.iso8601": HintClock, "url = ENV['WAREHOUSE_URL']": HintEnv} {
+		if hs := Hints([]string{line}, 1, 1, 1, 0); len(hs) != 1 || hs[0].Kind != kind {
+			t.Errorf("%q hints = %+v", line, hs)
+		}
+	}
+}
+
+func TestTestModules(t *testing.T) {
+	src := "pub fn total() -> u32 { 1 }\n\n#[cfg(test)]\nmod tests {\n    use super::*;\n\n    #[test]\n    fn adds() {\n        assert_eq!(total(), 1); // }\n    }\n}\n\nfn after() {}\n"
+	if got := TestModules(src); !reflect.DeepEqual(got, [][2]int{{3, 11}}) {
+		t.Errorf("TestModules = %v", got)
 	}
 }
 
@@ -405,6 +422,9 @@ const el = (<Toolbar
 		{"go", "parse(\"NewStore(path)\", `s.AddRepo(dir)`) // Drop(x)\n/* Skip() */ check(1)", []Call{{"", "parse"}, {"", "check"}}},
 		{"typescript", "expect(`total ${sum(xs)} of fake()`).toBe('Other()')", []Call{{"", "sum"}}},
 		{"typescript", "store?.save(o)", []Call{{"store", "save"}}},
+		// Constructors: Rust's Store::new(), Ruby's Ns::Store.new.
+		{"rust", "let s = Store::new();", []Call{{"Store", "new"}}},
+		{"ruby", "store = Orders::MemoryStore.new", []Call{{"", "MemoryStore"}}},
 		{"python", "assert run('''\nhelper()\n''') == \"Thing()\"  # ignore()", []Call{{"", "run"}}},
 		{"python", "assert f\"{fmt(o)}\" == \"x\"", []Call{{"", "fmt"}}},
 	}
@@ -416,10 +436,13 @@ const el = (<Toolbar
 }
 
 func TestDetectSuites(t *testing.T) {
-	files := []string{"go.mod", "frontend/package.json", "py/pyproject.toml", "rs/Cargo.toml", "rs/crates/a/Cargo.toml", "java/pom.xml", "node_modules/x/package.json"}
+	files := []string{"go.mod", "frontend/package.json", "py/pyproject.toml", "rs/Cargo.toml", "rs/crates/a/Cargo.toml", "java/pom.xml", "node_modules/x/package.json",
+		"rb/Gemfile", "other/Gemfile"}
 	content := map[string]string{
 		"frontend/package.json": `{"devDependencies": {"vitest": "^3"}}`,
 		"py/pyproject.toml":     "[tool.pytest.ini_options]\n",
+		"rb/Gemfile":            "gem 'rspec'\n",
+		"other/Gemfile":         "gem 'rails'\n",
 	}
 	got := DetectSuites(files, func(p string) string { return content[p] })
 	var ids []string
@@ -429,7 +452,7 @@ func TestDetectSuites(t *testing.T) {
 			t.Errorf("suite %+v incomplete", s)
 		}
 	}
-	if !reflect.DeepEqual(ids, []string{"go:", "vitest:frontend", "maven:java", "pytest:py", "cargo:rs"}) {
+	if !reflect.DeepEqual(ids, []string{"go:", "vitest:frontend", "maven:java", "pytest:py", "rspec:rb", "cargo:rs"}) {
 		t.Fatalf("ids = %v", ids)
 	}
 	if got[0].Name != "Go · root" {
