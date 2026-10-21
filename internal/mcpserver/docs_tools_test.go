@@ -20,7 +20,7 @@ func TestLanguageSupport(t *testing.T) {
 	// and the trace section, with the issue links still resolving.
 	ts := h.mustCall("get_language_support", map[string]any{"language": "ts"}, "# Language support: TypeScript",
 		"## Two analyzers", "## The `~` marker", "| **TypeScript, JavaScript** |", "### TypeScript and JavaScript",
-		"object-literal method", "## Trace view", "[#59]: https://")
+		"**Object literals:**", "## Trace view", "[#67]: https://")
 	if !strings.Contains(ts, "## Support matrix\n\n| | Symbols") {
 		t.Errorf("matrix header missing:\n%s", ts)
 	}
@@ -29,7 +29,7 @@ func TestLanguageSupport(t *testing.T) {
 			t.Errorf("typescript answer includes %q", other)
 		}
 	}
-	h.mustCall("get_language_support", map[string]any{"language": "csharp"}, "| **C#** |", "### Java, Kotlin, C# and Rust", "expression-bodied")
+	h.mustCall("get_language_support", map[string]any{"language": "csharp"}, "| **C#** |", "### Java, Kotlin, C# and Rust", "interface method declarations")
 	h.mustCall("get_language_support", map[string]any{"language": "lua"}, "| **Swift, Dart, Lua** |", "Nothing beyond the general limits")
 	if out, isErr := h.call("get_language_support", map[string]any{"language": "cobol"}); !isErr || !strings.Contains(out, "one of: go, typescript") {
 		t.Errorf("unknown language = %q", out)

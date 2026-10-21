@@ -53,6 +53,23 @@ every merged pull request.
   doesn't.
 
 ### Fixed
+- **Call graphs outside Go** (#59): definitions and calls the lexical
+  analyzer missed or got wrong.
+  - **TypeScript/JavaScript** (#61, #62):
+    - constructors, methods written on one line, class fields holding
+      arrow functions, object-literal methods (Workers' `export default {
+      fetch() }`) and anonymous default exports are found
+    - `new Foo()` reaches Foo's constructor
+    - `obj?.m()` keeps its receiver
+    - `super.m()` goes to the parent class
+    - multi-line imports count as dependencies
+  - **Java, C#, Kotlin, Rust** (#63):
+    - one-line Java methods and constructors are found
+    - C# `=>` methods are found
+    - Kotlin `= expr` functions end where they should
+    - Rust `fn new()` and `Store::new()` calls are found
+  - **Python** (#64): calls inside f-strings are found, in call graphs
+    and in the test-to-code mapping.
 - **Blast radius test status** (#57): callers showed as tested when a
   test merely could reach them on paper, or when any of their lines ran.
   Each caller now says whether tests run its call toward the change
