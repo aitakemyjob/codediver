@@ -480,6 +480,11 @@ func TestSetupHint(t *testing.T) {
 	if h := SetupHint([]string{"pytest: error: unrecognized arguments: --cov"}); !strings.Contains(h, "pytest-cov") {
 		t.Errorf("pytest hint = %q", h)
 	}
+	// Running npx vitest in a project without node_modules: the config
+	// can't import vitest.
+	if h := SetupHint([]string{"failed to load config from /x/vitest.config.ts", "Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'vitest' imported from /x/vitest.config.ts.mjs"}); !strings.Contains(h, "run npm install") {
+		t.Errorf("missing dependencies hint = %q", h)
+	}
 	if SetupHint([]string{"PASS"}) != "" {
 		t.Error("no hint expected")
 	}

@@ -107,6 +107,12 @@ Use a virtual environment for Python (`python -m venv .venv`) and don't
 commit it, `node_modules`, `__pycache__`, `.coverage`, or anything in
 `target/` except `site/jacoco/jacoco.xml`.
 
+**Run coverage in the app** works the same way: the suite CodeDiver detects
+runs the project's own tools, so install them first. For ts-react and the
+monorepo's `web`, run `npm install` in that folder; without it Vitest stops
+with "Cannot find package 'vitest'" and writes no report. `node_modules`
+and the HTML report are git-ignored under `testdata/examples`.
+
 ### Commands
 
 From the example's folder:
