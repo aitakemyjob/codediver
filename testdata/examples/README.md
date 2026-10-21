@@ -11,6 +11,9 @@ checks what CodeDiver finds in each, so the table below stays true.
 | [`ts-react`](ts-react) | TypeScript + React | Vitest | `coverage/lcov.info` (LCOV) |
 | [`python-api`](python-api) | Python | pytest | `coverage.lcov` (LCOV) |
 | [`java-maven`](java-maven) | Java (Maven) | JUnit 5 | `target/site/jacoco/jacoco.xml` (JaCoCo) |
+| [`rust-cargo`](rust-cargo) | Rust (Cargo) | `cargo test` (`#[cfg(test)]` modules) | `lcov.info` (LCOV, cargo-llvm-cov) |
+| [`dotnet-xunit`](dotnet-xunit) | C# (.NET) | xUnit | `coverage/coverage.cobertura.xml` (Cobertura, coverlet) |
+| [`ruby-rspec`](ruby-rspec) | Ruby | RSpec | `coverage/lcov.info` (LCOV, SimpleCov) |
 | [`polyglot-monorepo`](polyglot-monorepo) | Go + TypeScript + Python | go test, Vitest, pytest | one report per component |
 
 ## Try one
@@ -52,6 +55,15 @@ results compare side by side:
 | handler | `Handler.CreateOrder` | `OrderForm` | `create_order` | `OrderHandler.createOrder` | the direct caller of validate (blast radius) |
 | store | `store.Memory` | (none) | `MemoryStore` | `MemoryStore` | tested directly |
 
+| Piece | Rust | C# | Ruby |
+|---|---|---|---|
+| validate | `order::validate` | `Orders.Validate` | `Orders.validate` |
+| total → unit price | `total` → `unit_price` | `Orders.Total` → `UnitPrice` | `Orders.total` → `unit_price` |
+| legacy total | `legacy_total` | `Orders.LegacyTotal` | `Orders.legacy_total` |
+| notifier | `notify::send` | `Notifier.SendAsync` | `Notifier.deliver` |
+| handler | `Handler::create_order` | `OrderHandler.CreateOrderAsync` | `OrderHandler#create_order` |
+| store | `MemoryStore` | `MemoryStore` | `MemoryStore` |
+
 `polyglot-monorepo` is a billing system instead: a Go service
 (`services/billing`), a TypeScript web app (`web`) and Python jobs
 (`jobs`), each with the same kinds of gaps.
@@ -82,6 +94,18 @@ every language and the known gaps, see
 | Testability hints | ✓ | ✓ | ✓ | ✓ |
 | One suite and report per component in a monorepo | ✓ | ✓ | ✓ | n/a |
 
+| | Rust | C# | Ruby |
+|---|---|---|---|
+| Functions and methods | ✓ (`impl` methods, `fn new`) | ✓ (expression-bodied, constructors) | ✓ (`def self.x`, `initialize`) |
+| Tests discovered | ✓ (`#[test]` in `#[cfg(test)]` modules) | ✓ (`[Fact]`, `[Theory]`) | ✓ (describe/it) |
+| Test → code mapping | ✓ (`MemoryStore::new()` → `new`; test modules aren't code under test) | ✓ (`store.Save` → `MemoryStore.Save`: the receiver names the class) | ✓ (`Foo.new` → `initialize`; helpers inside `describe`) |
+| Call edges | name matching (`~`) | name matching (`~`); `int.Parse` isn't the repo's `Parse` | name matching (`~`) |
+| Calls without parentheses (`@store.save order`) | n/a | n/a | ✗ (#76) |
+| Calls inside string interpolation (`"#{timestamp}"`) | n/a (none in the example) | n/a (none in the example) | ✗ (#79) |
+| Coverage import | ✓ LCOV | ✓ Cobertura | ✓ LCOV |
+| Suite detected for Run coverage | ✓ cargo llvm-cov | ✓ dotnet test | ✓ `bundle exec rspec` |
+| Testability hints | ✓ (env, clock, network) | ✓ (env, clock, network) | ✓ (env, clock, network) |
+
 ## Regenerating coverage
 
 The reports are committed so the QA view, the demo script and
@@ -96,6 +120,9 @@ only need a toolchain to regenerate an example's report after changing it.
 | ts-react | [Node.js](https://nodejs.org) 20+ with npm | Vitest and `@vitest/coverage-v8` (pinned in `package.json`; `npm install` fetches them) | Node 24.21, npm 11.19, Vitest 3.2.4 |
 | python-api | Python 3.9+ (uses `dict[...]` and `tuple[...]` annotations) | pytest, pytest-cov and coverage.py (pinned in `requirements-dev.txt`) | Python 3.12.3, pytest 8.3.3, pytest-cov 5.0.0, coverage 7.16.2 |
 | java-maven | JDK 17+ and [Maven](https://maven.apache.org/download.cgi) 3.9+ | JUnit 5 and the JaCoCo Maven plugin (in `pom.xml`) | JDK 25, JUnit 5.11.3, JaCoCo 0.8.12* |
+| rust-cargo | Rust stable via [rustup](https://rustup.rs) (cargo, rustc) | [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (`cargo install cargo-llvm-cov`) and `rustup component add llvm-tools-preview` | Rust 1.99.1, cargo-llvm-cov 0.9.1 |
+| dotnet-xunit | [.NET SDK](https://dotnet.microsoft.com/download) 8.0+ | xUnit and coverlet (`coverlet.collector`), pinned in `tests/Orders.Tests/Orders.Tests.csproj`; `dotnet test` restores them | .NET SDK 8.0.426, xUnit 2.9.2, coverlet.collector 6.0.2 |
+| ruby-rspec | Ruby 3.2+ with Bundler | RSpec, SimpleCov and simplecov-lcov (in `Gemfile`, locked in `Gemfile.lock`) | Ruby 3.4.5, RSpec 3.13, SimpleCov 0.22 |
 | polyglot-monorepo | Go, Node.js and Python as above | as above, per component | as above |
 
 \* Generated without Maven: compiled with `javac --release 17`, run with
@@ -105,12 +132,15 @@ Running Maven gives the same report.
 
 Use a virtual environment for Python (`python -m venv .venv`) and don't
 commit it, `node_modules`, `__pycache__`, `.coverage`, or anything in
-`target/` except `site/jacoco/jacoco.xml`.
+`target/` except `site/jacoco/jacoco.xml`. Build output (`target/` for
+Rust, `bin/` and `obj/` for .NET, `.bundle/`) and SimpleCov's
+`.resultset.json` are git-ignored under `testdata/examples`.
 
 **Run coverage in the app** works the same way: the suite CodeDiver detects
 runs the project's own tools, so install them first. For ts-react and the
 monorepo's `web`, run `npm install` in that folder; without it Vitest stops
-with "Cannot find package 'vitest'" and writes no report. `node_modules`
+with "Cannot find package 'vitest'" and writes no report. For ruby-rspec,
+run `bundle install`; Rust and .NET fetch their packages on the first run. `node_modules`
 and the HTML report are git-ignored under `testdata/examples`.
 
 ### Commands
@@ -123,6 +153,9 @@ From the example's folder:
 | ts-react | `npm install && npm run coverage` (don't commit `node_modules`) |
 | python-api | `pip install -r requirements-dev.txt && python -m pytest --cov=orders --cov-report=lcov:coverage.lcov` |
 | java-maven | `mvn -q org.jacoco:jacoco-maven-plugin:prepare-agent test org.jacoco:jacoco-maven-plugin:report` (commit only `target/site/jacoco/jacoco.xml`) |
+| rust-cargo | `cargo llvm-cov --lcov --output-path lcov.info --remap-path-prefix` (keeps the paths relative) |
+| dotnet-xunit | `dotnet test --collect:"XPlat Code Coverage" --results-directory coverage`, then move `coverage/<guid>/coverage.cobertura.xml` to `coverage/coverage.cobertura.xml` and make its `<source>` relative (`src/Orders/`) |
+| ruby-rspec | `bundle install && bundle exec rspec` (writes `coverage/lcov.info` with relative paths) |
 | polyglot-monorepo | each component as above, from its own folder (see its README) |
 
 Then run `go test ./internal/core -run Example` from the repository root.

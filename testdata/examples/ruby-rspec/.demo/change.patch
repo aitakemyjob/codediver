@@ -1,0 +1,11 @@
+--- a/lib/orders/order.rb
++++ b/lib/orders/order.rb
+@@ -9,7 +9,7 @@ module Orders
+   def self.validate(order)
+     return 'quantity must be at least 1' if order.qty <= 0
+     return 'sku is required' if order.sku.to_s.empty?
+-    return 'quantity is over the limit of 1000' if order.qty > 1000
++    return 'quantity is over the limit of 500' if order.qty > 500
+ 
+     nil
+   end

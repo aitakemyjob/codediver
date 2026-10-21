@@ -36,6 +36,8 @@ radius.
 
   If the closest group has one to three candidates, the **first** is linked.
   With more than three, no edge is drawn.
+- Calls on built-in types and namespaces (`int.Parse`, `Math.max`,
+  `String::new`) never link to the repository's code.
 
 ## The `~` marker
 
@@ -168,12 +170,19 @@ Dependencies:
   through an interface links by name to a class with that method. *[#76]*
 - **Java:** method references (`this::save`) get no edge. *[#68]*
 - **Rust:** `impl Trait for Type` isn't linked to the trait. *[#76]*
-  Calls inside macros like `println!` are found.
+  Calls inside macros like `println!` are found. Functions in
+  `#[cfg(test)]` modules are test code, not code under test.
+- **Kotlin and C#:** calls inside string interpolation (`"${total(o)}"`,
+  `$"{Total(o)}"`) are lost with the string text. *[#79]*
 
 ### Ruby
 
 - Calls without parentheses (`write o`, `save!`) aren't found, and that's
   how most Ruby is written. Expect sparse call graphs. *[#76]*
+- Calls inside string interpolation (`"sent at #{timestamp}"`) are lost
+  with the string text. *[#79]*
+- `Foo.new` reaches `Foo#initialize` in the test-to-code mapping, but not
+  yet in the call graph.
 
 ## Trace view and `trace_to`
 
@@ -203,3 +212,4 @@ Dependencies:
 [#74]: https://github.com/aitakemyjob/codediver/issues/74
 [#75]: https://github.com/aitakemyjob/codediver/issues/75
 [#76]: https://github.com/aitakemyjob/codediver/issues/76
+[#79]: https://github.com/aitakemyjob/codediver/issues/79
