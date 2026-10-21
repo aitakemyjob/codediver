@@ -49,6 +49,7 @@ type fnExpect struct {
 	cover   string
 	tested  bool // some test reaches it, directly or indirectly
 	callers int  // -1 skips the check
+	missing bool // must not be a function under test at all
 }
 
 type exampleCase struct {
@@ -135,6 +136,54 @@ var examples = []exampleCase{
 		hardToTest: "Notifier.send", hints: []string{"env", "clock", "network"},
 		validate: "Orders.validate", file: "src/main/java/com/example/orders/Orders.java", edit: proposals.Edit{Old: "if (o.qty() > 1000) {", New: "if (o.qty() > 500) {"}, caller: "OrderHandler.createOrder", callerStatus: StatusCaller,
 	},
+	{
+		// Tests live in #[cfg(test)] modules next to the code.
+		name: "rust-cargo", framework: "rust", tests: 4, covFiles: 4,
+		funcs: map[string]fnExpect{
+			"validate":         {cover: "partial", tested: true, callers: 2},
+			"total":            {cover: "full", tested: true, callers: 2},
+			"unit_price":       {cover: "partial", tested: true, callers: 1},
+			"legacy_total":     {cover: "0", callers: 0},
+			"MemoryStore.new":  {cover: "full", tested: true, callers: 1}, // MemoryStore::new() in a test
+			"MemoryStore.save": {cover: "full", tested: true, callers: 2},
+			// Test functions and helpers in the test module aren't code
+			// under test.
+			"save_and_find": {missing: true},
+			"order":         {missing: true},
+		},
+		hardToTest: "send", hints: []string{"env", "clock", "network"},
+		validate: "validate", file: "src/order.rs", edit: proposals.Edit{Old: "if o.qty > 1000 {", New: "if o.qty > 500 {"}, caller: "Handler.create_order", callerStatus: StatusCaller,
+	},
+	{
+		name: "dotnet-xunit", framework: "dotnet", tests: 4, covFiles: 5,
+		funcs: map[string]fnExpect{
+			"Orders.Validate":    {cover: "partial", tested: true, callers: 2},
+			"Orders.Total":       {cover: "full", tested: true, callers: 2}, // expression-bodied
+			"Orders.UnitPrice":   {cover: "full", tested: true, callers: 1},
+			"Orders.LegacyTotal": {cover: "0", callers: 0},
+			// store.Save in a test: the receiver names the class.
+			"MemoryStore.Save": {cover: "full", tested: true, callers: 2},
+			// int.Parse inside Parse isn't a call to Parse.
+			"OrderHandler.Parse":        {cover: "partial", tested: true, callers: 1},
+			"OrderHandler.OrderHandler": {cover: "full", tested: true, callers: 1}, // the constructor
+		},
+		hardToTest: "Notifier.SendAsync", hints: []string{"env", "clock", "network"},
+		validate: "Orders.Validate", file: "src/Orders/Orders.cs", edit: proposals.Edit{Old: "if (o.Qty > 1000)", New: "if (o.Qty > 500)"}, caller: "OrderHandler.CreateOrderAsync", callerStatus: StatusCaller,
+	},
+	{
+		name: "ruby-rspec", framework: "rspec", tests: 4, covFiles: 5,
+		funcs: map[string]fnExpect{
+			"Orders.validate":     {cover: "partial", tested: true, callers: 1},
+			"Orders.total":        {cover: "full", tested: true, callers: 1},
+			"Orders.unit_price":   {cover: "partial", tested: true, callers: 1},
+			"Orders.legacy_total": {cover: "partial", callers: 0}, // the def line runs on load
+			// Orders::MemoryStore.new runs initialize.
+			"MemoryStore.initialize": {cover: "full", tested: true, callers: 0},
+			"MemoryStore.find":       {cover: "full", tested: true, callers: 1},
+		},
+		hardToTest: "Notifier.deliver", hints: []string{"env", "network"},
+		validate: "Orders.validate", file: "lib/orders/order.rb", edit: proposals.Edit{Old: "if order.qty > 1000", New: "if order.qty > 500"}, caller: "OrderHandler.create_order", callerStatus: StatusCaller,
+	},
 }
 
 func TestExamples(t *testing.T) {
@@ -166,6 +215,12 @@ func TestExamples(t *testing.T) {
 			}
 			for name, want := range ex.funcs {
 				f := byName[name]
+				if want.missing {
+					if f != nil {
+						t.Errorf("%s should not be code under test: %+v", name, f)
+					}
+					continue
+				}
 				if f == nil {
 					t.Errorf("%s not found", name)
 					continue
@@ -236,6 +291,15 @@ func TestExamples(t *testing.T) {
 			for _, n := range r.Impact.Rings[0].Nodes {
 				if n.Name == ex.caller && (n.Status != ex.callerStatus || !n.Measured || n.Tested || !n.Review) {
 					t.Errorf("%s = %+v, want %s", n.Name, n, ex.callerStatus)
+				}
+			}
+			// Tests aren't callers in the blast radius, including Rust
+			// tests in #[cfg(test)] modules next to the code.
+			for _, ring := range r.Impact.Rings {
+				for _, n := range ring.Nodes {
+					if a.isTestCode(ix.Symbols[n.ID]) {
+						t.Errorf("test in the blast radius: %s (%s:%d)", n.Name, n.File, n.Line)
+					}
 				}
 			}
 			if c := r.Impact.Changed[0]; c.Status != StatusPath || !c.Measured {
@@ -346,6 +410,26 @@ func TestExampleTypeScriptConstructs(t *testing.T) {
 	}
 }
 
+// TestExampleRubyHelpers pins that a helper defined inside a describe
+// block (order_spec.rb's order) belongs to that block: each test maps only
+// to what it calls.
+func TestExampleRubyHelpers(t *testing.T) {
+	s, rt := openExample(t, "ruby-rspec")
+	a, err := s.qaAnalyze(context.Background(), rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"rejects a zero quantity":   "h:lib/orders/order.rb#Orders.validate",
+		"applies the bulk discount": "h:lib/orders/order.rb#Orders.total",
+	}
+	for _, tc := range a.tests {
+		if w, ok := want[tc.Name]; ok && strings.Join(tc.Targets, ",") != w {
+			t.Errorf("%q targets = %v, want %s", tc.Name, tc.Targets, w)
+		}
+	}
+}
+
 // TestExampleKnownGaps pins analysis gaps the examples expose, so the
 // README's support matrix stays honest. When one of these fails because
 // analysis got better, update the matrix and move the check above.
@@ -360,6 +444,19 @@ func TestExampleKnownGaps(t *testing.T) {
 		// function, so App has no caller and counts as an entry point.
 		if f.Name == "App" && f.Callers != 0 {
 			t.Errorf("App callers = %d: module-level code now counts as a caller; update the support matrix", f.Callers)
+		}
+	}
+
+	// Ruby: a call without parentheses (`@store.save order`) isn't found
+	// (#76), and neither is one inside string interpolation
+	// (`"#{timestamp}"`, #79).
+	s, rt = openExample(t, "ruby-rspec")
+	if a, err = s.qaAnalyze(context.Background(), rt); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range a.funcs {
+		if (f.Name == "MemoryStore.save" || f.Name == "Notifier.timestamp") && f.Callers != 0 {
+			t.Errorf("%s callers = %d: the gap is fixed; update the support matrix and the README", f.Name, f.Callers)
 		}
 	}
 }

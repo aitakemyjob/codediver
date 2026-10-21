@@ -1,0 +1,14 @@
+--- a/src/Orders/Orders.cs
++++ b/src/Orders/Orders.cs
+@@ -16,9 +16,9 @@ public static class Orders
+         {
+             return "sku is required";
+         }
+-        if (o.Qty > 1000)
++        if (o.Qty > 500)
+         {
+-            return "quantity is over the limit of 1000";
++            return "quantity is over the limit of 500";
+         }
+         return null;
+     }

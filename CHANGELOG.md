@@ -9,6 +9,12 @@ every merged pull request.
 ## [Unreleased]
 
 ### Added
+- **Example projects for Rust, C# and Ruby** (#51): `rust-cargo` (cargo
+  test, cargo-llvm-cov), `dotnet-xunit` (xUnit, coverlet Cobertura) and
+  `ruby-rspec` (RSpec, SimpleCov LCOV), with committed coverage and demo
+  patches, pinned in the examples tests. RSpec projects get a coverage
+  suite (`bundle exec rspec`), and `coverage/coverage.cobertura.xml` is
+  imported automatically.
 - **Demos:** agents can play animated, step-by-step demos with
   `show_demo` — architecture diagrams with nested containers, icons,
   regions and color-coded paths, or execution trees seeded from the call
@@ -77,6 +83,18 @@ every merged pull request.
   aren't installed ("Cannot find package 'vitest'") now says to run
   `npm install` in the suite's folder instead of only reporting that no
   coverage report was written.
+- Found through the new examples (#51):
+  - **Test mapping:**
+    - Rust unit tests in `#[cfg(test)]` modules are test code, not code
+      under test
+    - `MemoryStore::new()`, `Foo.new` (Ruby) and `store.Save(…)` (a
+      receiver named like its class) map tests to the code they call
+    - a helper defined inside `describe` no longer absorbs the tests
+      after it
+  - **Call graph:** calls on built-in types (`int.Parse`, `String::new`)
+    no longer link to same-named repository functions.
+  - **Testability hints** recognize Rust's `TcpStream`, .NET's
+    `HttpClient` calls, and Ruby's `Time.now`, `ENV` and `Net::HTTP`.
 - **Blast radius test status** (#57): callers showed as tested when a
   test merely could reach them on paper, or when any of their lines ran.
   Each caller now says whether tests run its call toward the change

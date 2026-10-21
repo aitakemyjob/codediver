@@ -1,0 +1,12 @@
+--- a/src/order.rs
++++ b/src/order.rs
+@@ -19,6 +19,9 @@ pub fn validate(o: &Order) -> Result<(), String> {
+     if o.sku.is_empty() {
+         return Err("sku is required".into());
+     }
++    if o.qty > 1000 {
++        return Err("quantity is over the limit of 1000".into());
++    }
+     Ok(())
+ }
+ 

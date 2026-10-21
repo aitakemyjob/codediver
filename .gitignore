@@ -10,6 +10,17 @@
 /testdata/examples/**/node_modules/
 /testdata/examples/**/coverage/lcov-report/
 /testdata/examples/**/package-lock.json
+/testdata/examples/**/target/debug/
+/testdata/examples/**/target/llvm-cov-target/
+/testdata/examples/**/target/.rustc_info.json
+/testdata/examples/**/target/CACHEDIR.TAG
+/testdata/examples/**/bin/
+/testdata/examples/**/obj/
+/testdata/examples/**/vendor/bundle/
+/testdata/examples/**/.bundle/
+/testdata/examples/**/coverage/.resultset.json
+/testdata/examples/**/coverage/.last_run.json
+/testdata/examples/**/coverage/.resultset.json.lock
 
 # Wails-generated platform files (regenerated from build/appicon.png)
 /build/darwin/
