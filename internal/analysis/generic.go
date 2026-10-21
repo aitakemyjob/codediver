@@ -23,12 +23,14 @@ type defPattern struct {
 }
 
 type langSpec struct {
-	defs       []defPattern
-	imports    []*regexp.Regexp
-	block      string // "brace" | "indent" | "end"
-	lineCmt    []string
-	blockCmt   [2]string
-	strDelims  string
+	defs      []defPattern
+	imports   []*regexp.Regexp
+	block     string // "brace" | "indent" | "end"
+	lineCmt   []string
+	blockCmt  [2]string
+	strDelims string
+	// interp marks `${…}` in backtick strings as code (template literals).
+	interp     bool
 	extensions []string // used when resolving extension-less imports
 }
 
@@ -145,6 +147,7 @@ func jsSpec() *langSpec {
 		lineCmt:    []string{"//"},
 		blockCmt:   [2]string{"/*", "*/"},
 		strDelims:  "\"'`",
+		interp:     true,
 		extensions: []string{".ts", ".tsx", ".js", ".jsx", ".mjs", "/index.ts", "/index.tsx", "/index.js"},
 	}
 }
@@ -194,6 +197,23 @@ func init() {
 	constructor`) {
 		keywords[k] = true
 	}
+}
+
+// goMask masks Go source, which go/ast parses rather than a langSpec.
+var goMask = &langSpec{block: "brace", lineCmt: []string{"//"}, blockCmt: [2]string{"/*", "*/"}, strDelims: "\"'`"}
+
+// MaskCode blanks the comments and string contents of src in lang, keeping
+// line structure, so text-based scans only see code. Unknown languages are
+// returned unchanged.
+func MaskCode(src, lang string) string {
+	sp := specs[lang]
+	if lang == "go" {
+		sp = goMask
+	}
+	if sp == nil {
+		return src
+	}
+	return maskSource(src, sp)
 }
 
 // maskSource blanks comments and string contents (keeping newlines and
@@ -253,7 +273,7 @@ func maskSource(src string, sp *langSpec) string {
 			j := i + 1
 			for j < n && b[j] != c {
 				// Template literal interpolations (`${total(o)}`) are code.
-				if c == '`' && b[j] == '$' && j+1 < n && b[j+1] == '{' {
+				if c == '`' && sp.interp && b[j] == '$' && j+1 < n && b[j+1] == '{' {
 					depth := 0
 					for j++; j < n; j++ {
 						if b[j] == '{' {
