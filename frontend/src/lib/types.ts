@@ -317,8 +317,8 @@ export interface ImpactNode {
   /** Tests that call it, or might reach it, by the static test mapping. */
   direct: number;
   indirect: number;
-  /** Whether tests run its call toward the change; see TestStatus. */
-  status: TestStatus;
+  /** Whether tests run its call toward the change; see TestStatus. Absent for types, which tests don't run. */
+  status?: TestStatus;
   /** The status comes from coverage, not the static mapping. */
   measured: boolean;
   /** The coverage is older than the file. */

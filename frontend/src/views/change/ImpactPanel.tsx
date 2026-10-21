@@ -57,7 +57,7 @@ export function ImpactPanel({ impact }: { impact: Impact }) {
             <div className="row" style={{ flexWrap: 'wrap', gap: 6, padding: '0 8px 6px' }}>
               {impact.changed.map((n) => (
                 <span key={n.id} className="sym-chip" onClick={() => actions.code(n.file, n.line)} title={`${n.file}:${n.line} · ${testStatus(n)}`}>
-                  {n.name} {judged && !n.tested && <span className="del">· {statusInfo[n.status]?.label ?? 'untested'}</span>}
+                  {n.name} {judged && n.status && !n.tested && <span className="del">· {statusInfo[n.status].label}</span>}
                 </span>
               ))}
             </div>
@@ -152,10 +152,10 @@ function CallerRow({ n, impact, byId }: { n: ImpactNode; impact: Impact; byId: M
       <span className="faint ellipsis" style={{ width: 160, textAlign: 'right' }}>{basename(n.file)}:{n.line}</span>
       {impact.tests || impact.coverage ? (
         <>
-          <span style={{ width: 150, textAlign: 'right', color: statusInfo[n.status]?.tone }} title={testStatus(n)}>
+          <span style={{ width: 150, textAlign: 'right', color: n.status ? statusInfo[n.status].tone : 'var(--text-3)' }} title={testStatus(n)}>
             {n.review && <CircleAlert size={12} style={{ verticalAlign: -2, marginRight: 4 }} />}
-            {statusInfo[n.status]?.label ?? 'unknown'}
-            {!n.measured && n.status !== 'unknown' && <span className="faint"> (est.)</span>}
+            {n.status ? statusInfo[n.status].label : n.kind}
+            {n.status && !n.measured && n.status !== 'unknown' && <span className="faint"> (est.)</span>}
             {n.stale && <span className="faint" title="coverage is older than the file"> (stale)</span>}
           </span>
           <span style={{ width: 110 }}><CoverageBar pct={n.pct} width={50} /></span>

@@ -264,7 +264,7 @@ func writeImpact(sb *strings.Builder, im *core.Impact) {
 		sb.WriteString(":\n")
 		for _, n := range r.Nodes[:min(len(r.Nodes), 25)] {
 			fmt.Fprintf(sb, "- %s  %s:%d → %s", n.Name, n.File, n.Line, n.Via)
-			if im.Tests || im.Coverage {
+			if (im.Tests || im.Coverage) && n.Status != "" {
 				fmt.Fprintf(sb, "  %s", statusText(n))
 			}
 			if n.Review {

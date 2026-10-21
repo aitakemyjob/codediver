@@ -62,10 +62,10 @@ type ImpactNode struct {
 	// through other calls, by the static test mapping.
 	Direct   int `json:"direct"`
 	Indirect int `json:"indirect"`
-	// Status is the test status (StatusPath…). Measured says it comes from
-	// coverage rather than the static mapping; Stale that the coverage is
-	// older than the file.
-	Status   string `json:"status"`
+	// Status is the test status (StatusPath…), empty for types, which
+	// tests don't run. Measured says it comes from coverage rather than the
+	// static mapping; Stale that the coverage is older than the file.
+	Status   string `json:"status,omitempty"`
 	Measured bool   `json:"measured"`
 	Stale    bool   `json:"stale,omitempty"`
 	// Tests names per-test runs that ran its call toward the change.
@@ -291,14 +291,18 @@ func buildImpact(ix *analysis.Index, r *analysis.Reach, a *qaAnalysis, cv *impac
 				n.Pct, n.Direct, n.Indirect = f.Pct, f.Direct, f.Indirect
 			}
 		}
-		var sites []int
-		if d > 0 {
-			sites = callSites(ix, r, id, d)
+		// Only code that runs has a test status: a changed struct or
+		// interface is neither tested nor untested.
+		if sym.Kind.IsCallable() {
+			var sites []int
+			if d > 0 {
+				sites = callSites(ix, r, id, d)
+			}
+			st := cv.status(sym, sites, f)
+			n.Status, n.Measured, n.Stale, n.Tests = st.Status, st.Measured, st.Stale, st.Tests
+			n.Tested = n.Status == StatusPath || n.Status == StatusLikely
+			n.Review = d == 1 && !n.Tested && (im.Tests || im.Coverage)
 		}
-		st := cv.status(sym, sites, f)
-		n.Status, n.Measured, n.Stale, n.Tests = st.Status, st.Measured, st.Stale, st.Tests
-		n.Tested = n.Status == StatusPath || n.Status == StatusLikely
-		n.Review = d == 1 && !n.Tested && (im.Tests || im.Coverage)
 		if !ix.HasCallers(id) {
 			switch {
 			case sym.Name == "main" && sym.Kind == analysis.KindFunc:
@@ -354,7 +358,9 @@ func buildImpact(ix *analysis.Index, r *analysis.Reach, a *qaAnalysis, cv *impac
 				perPkg[n.Package] = p
 			}
 			p.Count++
-			ring.Statuses[n.Status]++
+			if n.Status != "" {
+				ring.Statuses[n.Status]++
+			}
 			if n.Tested {
 				p.Tested++
 				ring.Tested++

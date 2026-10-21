@@ -45,7 +45,8 @@ export const statusOrder = Object.keys(statusInfo) as TestStatus[];
  * (TestCreate) · measured · 82%".
  */
 export function testStatus(n: ImpactNode): string {
-  const info = statusInfo[n.status] ?? statusInfo.unknown;
+  if (!n.status) return `A ${n.kind}: tests run code, not types`;
+  const info = statusInfo[n.status];
   const parts = [info.long + (n.tests?.length ? ` (${n.tests.join(', ')})` : '')];
   parts.push(n.measured ? (n.stale ? 'measured, but the file changed since' : 'measured') : 'estimated');
   if (n.pct >= 0) parts.push(`${pctLabel(n.pct)} covered`);

@@ -311,7 +311,7 @@ func (s *Service) changeCoverage(rt *RepoHandle, ix *analysis.Index, a *qaAnalys
 					t.Functions = appendUnique(t.Functions, n.Name)
 				}
 			}
-			if !n.Tested {
+			if !n.Tested && n.Status != "" {
 				cc.Untested = append(cc.Untested, n)
 			}
 		}
