@@ -406,6 +406,7 @@ const el = (<Toolbar
 		{"typescript", "expect(`total ${sum(xs)} of fake()`).toBe('Other()')", []Call{{"", "sum"}}},
 		{"typescript", "store?.save(o)", []Call{{"store", "save"}}},
 		{"python", "assert run('''\nhelper()\n''') == \"Thing()\"  # ignore()", []Call{{"", "run"}}},
+		{"python", "assert f\"{fmt(o)}\" == \"x\"", []Call{{"", "fmt"}}},
 	}
 	for _, c := range cases {
 		if got := Calls(c.src, c.lang); !reflect.DeepEqual(got, c.want) {
