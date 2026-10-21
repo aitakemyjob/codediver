@@ -63,6 +63,9 @@ type exampleCase struct {
 	edit       proposals.Edit
 	file       string
 	caller     string // its direct caller in the blast radius
+	// callerStatus is that caller's test status under the committed
+	// coverage: none of the examples' tests runs its call into validate.
+	callerStatus string
 }
 
 var examples = []exampleCase{
@@ -77,7 +80,7 @@ var examples = []exampleCase{
 			"Handler.CreateOrder": {cover: "partial", tested: true, callers: 1},
 		},
 		hardToTest: "Send", hints: []string{"env", "clock", "network"},
-		validate: "Validate", file: "order/order.go", edit: proposals.Edit{Old: "if o.Qty > 1000 {", New: "if o.Qty > 500 {"}, caller: "Handler.CreateOrder",
+		validate: "Validate", file: "order/order.go", edit: proposals.Edit{Old: "if o.Qty > 1000 {", New: "if o.Qty > 500 {"}, caller: "Handler.CreateOrder", callerStatus: StatusCaller,
 	},
 	{
 		name: "ts-react", framework: "vitest", tests: 3, covFiles: 6,
@@ -92,7 +95,7 @@ var examples = []exampleCase{
 			"OrderForm":    {cover: "0", callers: 1},
 		},
 		hardToTest: "createOrder", hints: []string{"network", "clock"},
-		validate: "validate", file: "src/order.ts", edit: proposals.Edit{Old: "if (o.qty > 1000)", New: "if (o.qty > 500)"}, caller: "submit",
+		validate: "validate", file: "src/order.ts", edit: proposals.Edit{Old: "if (o.qty > 1000)", New: "if (o.qty > 500)"}, caller: "submit", callerStatus: StatusNotRun,
 	},
 	{
 		name: "python-api", framework: "pytest", tests: 4, covFiles: 5,
@@ -106,7 +109,7 @@ var examples = []exampleCase{
 			"MemoryStore.get": {cover: "partial", tested: true, callers: 2},
 		},
 		hardToTest: "send", hints: []string{"env", "clock", "network"},
-		validate: "validate", file: "orders/order.py", edit: proposals.Edit{Old: "if o.qty > 1000:", New: "if o.qty > 500:"}, caller: "create_order",
+		validate: "validate", file: "orders/order.py", edit: proposals.Edit{Old: "if o.qty > 1000:", New: "if o.qty > 500:"}, caller: "create_order", callerStatus: StatusCaller,
 	},
 	{
 		name: "java-maven", framework: "junit", tests: 4, covFiles: 5,
@@ -120,7 +123,7 @@ var examples = []exampleCase{
 			"MemoryStore.save": {cover: "full", tested: true, callers: 2},
 		},
 		hardToTest: "Notifier.send", hints: []string{"env", "clock", "network"},
-		validate: "Orders.validate", file: "src/main/java/com/example/orders/Orders.java", edit: proposals.Edit{Old: "if (o.qty() > 1000) {", New: "if (o.qty() > 500) {"}, caller: "OrderHandler.createOrder",
+		validate: "Orders.validate", file: "src/main/java/com/example/orders/Orders.java", edit: proposals.Edit{Old: "if (o.qty() > 1000) {", New: "if (o.qty() > 500) {"}, caller: "OrderHandler.createOrder", callerStatus: StatusCaller,
 	},
 }
 
@@ -216,7 +219,17 @@ func TestExamples(t *testing.T) {
 				t.Fatal(err)
 			}
 			if len(r.Impact.Rings) == 0 || r.Impact.Rings[0].Depth != 1 || !strings.Contains(nodeNames(r.Impact.Rings[0].Nodes), ex.caller) {
-				t.Errorf("direct callers = %+v", r.Impact.Rings)
+				t.Fatalf("direct callers = %+v", r.Impact.Rings)
+			}
+			// Its status is measured, and a caller whose call into the
+			// change no test runs needs review, whatever static reach says.
+			for _, n := range r.Impact.Rings[0].Nodes {
+				if n.Name == ex.caller && (n.Status != ex.callerStatus || !n.Measured || n.Tested || !n.Review) {
+					t.Errorf("%s = %+v, want %s", n.Name, n, ex.callerStatus)
+				}
+			}
+			if c := r.Impact.Changed[0]; c.Status != StatusPath || !c.Measured {
+				t.Errorf("changed = %+v", c)
 			}
 			if !r.Coverage.Available || r.Coverage.Lines != 1 || r.Coverage.Uncovered != 1 || len(r.Coverage.Tests) == 0 {
 				t.Errorf("change coverage = %+v", r.Coverage)

@@ -35,8 +35,9 @@ func withTests(t *testing.T, h *harness, coverage bool) {
 				validate = i + 1
 			}
 		}
-		write("coverage.out", fmt.Sprintf("mode: set\nexample.com/shop/api/api.go:%d.80,%d.2 3 1\nexample.com/shop/api/api.go:%d.36,%d.2 2 0\n",
-			create, create+3, validate, validate+5))
+		// The test returns before CreateOrder's call to validate (create+6).
+		write("coverage.out", fmt.Sprintf("mode: set\nexample.com/shop/api/api.go:%d.80,%d.2 3 1\nexample.com/shop/api/api.go:%d.2,%d.30 1 0\nexample.com/shop/api/api.go:%d.36,%d.2 2 0\n",
+			create, create+3, create+6, create+6, validate, validate+5))
 	}
 	rt, err := h.core.Repo(h.repo.ID)
 	if err != nil {
@@ -61,12 +62,12 @@ func TestQAToolsWithoutCoverage(t *testing.T) {
 func TestQAToolsWithCoverage(t *testing.T) {
 	h := newHarness(t)
 	withTests(t, h, true)
-	h.mustCall("get_test_overview", map[string]any{"show": true}, "line coverage 40.0% (4/10 lines)", "least covered directories", "- api 40%")
+	h.mustCall("get_test_overview", map[string]any{"show": true}, "line coverage 36.4% (4/11 lines)", "least covered directories", "- api 36%")
 	if ev := h.waitFor("focus"); !strings.Contains(jsonOf(t, ev.Data), `"view":"qa"`) {
 		t.Errorf("focus = %+v", ev.Data)
 	}
-	h.mustCall("get_coverage", map[string]any{"path": "api/api.go", "show": true}, "api/api.go: 40.0% covered", "uncovered lines:", "validate", "0.0%")
-	h.mustCall("get_coverage", map[string]any{"path": "api"}, "- api/api.go 40.0% (4/10 lines)")
+	h.mustCall("get_coverage", map[string]any{"path": "api/api.go", "show": true}, "api/api.go: 36.4% covered", "uncovered lines:", "validate", "0.0%")
+	h.mustCall("get_coverage", map[string]any{"path": "api"}, "- api/api.go 36.4% (4/11 lines)")
 	h.mustCall("find_test_gaps", map[string]any{"limit": 3}, "1. validate", "coverage 0.0%", "uncovered lines:")
 	h.mustCall("get_tests_for", map[string]any{"symbol": "validate"}, "indirect tests via callers (1)", "uncovered lines")
 
@@ -117,7 +118,7 @@ func TestTestsForChange(t *testing.T) {
 	p := filepath.Join(h.dir, "api", "api.go")
 	testutil.Must(t, os.WriteFile(p, []byte(strings.Replace(testutil.Files["api/api.go"], "if o.Qty <= 0 {", "if o.Qty < 1 {", 1)), 0o644))
 	h.mustCall("get_tests_for_change", map[string]any{"show": true}, "Changed lines: 0 of 1 covered", "1 not run by any test",
-		"not covered: api/api.go:", "Tests that call or reach the changed functions (1), estimated", "TestCreateOrderRejectsBadJSON", "estimated", "Direct callers", "Handler.CreateOrder", "→ validate")
+		"not covered: api/api.go:", "Tests that call or reach the changed functions (1), estimated", "TestCreateOrderRejectsBadJSON", "estimated", "Direct callers", "Handler.CreateOrder", "→ validate", "runs, but no test runs this call", "REVIEW")
 	if ev := h.waitFor("focus"); !strings.Contains(jsonOf(t, ev.Data), `"pane":"tests"`) {
 		t.Errorf("focus = %+v", ev.Data)
 	}

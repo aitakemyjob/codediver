@@ -3,8 +3,10 @@ package core
 import (
 	"context"
 	"math"
+	"os"
 	"path"
 	"sort"
+	"time"
 
 	"github.com/aitakemyjob/codediver/internal/analysis"
 	"github.com/aitakemyjob/codediver/internal/proposals"
@@ -29,6 +31,19 @@ var ringCap = [impactDepth + 1]int{0, 150, 80, 80}
 
 const entryCap = 25
 
+// Test status of a blast-radius node, strongest evidence first. Measured
+// coverage always decides over the static test mapping.
+const (
+	StatusPath    = "path"    // a test ran its call toward the change
+	StatusCaller  = "caller"  // it ran, but not its call toward the change
+	StatusNotRun  = "notrun"  // coverage shows none of its lines ran
+	StatusLikely  = "likely"  // not measured; a test calls it directly
+	StatusUnknown = "unknown" // not measured, and no test calls it directly
+)
+
+// statusRank orders statuses for review, weakest first.
+var statusRank = map[string]int{StatusNotRun: 0, StatusCaller: 1, StatusUnknown: 2, StatusLikely: 3, StatusPath: 4}
+
 // ImpactNode is a changed symbol or one of its callers.
 type ImpactNode struct {
 	ID      string `json:"id"`
@@ -42,11 +57,22 @@ type ImpactNode struct {
 	Via   string `json:"via,omitempty"`
 	ViaID string `json:"viaId,omitempty"`
 	// Pct is line coverage, -1 without coverage data.
-	Pct      float64 `json:"pct"`
-	Direct   int     `json:"direct"`
-	Indirect int     `json:"indirect"`
-	Tested   bool    `json:"tested"`
-	// Review marks direct callers no test reaches.
+	Pct float64 `json:"pct"`
+	// Direct and Indirect count tests that call it, or might reach it
+	// through other calls, by the static test mapping.
+	Direct   int `json:"direct"`
+	Indirect int `json:"indirect"`
+	// Status is the test status (StatusPath…). Measured says it comes from
+	// coverage rather than the static mapping; Stale that the coverage is
+	// older than the file.
+	Status   string `json:"status"`
+	Measured bool   `json:"measured"`
+	Stale    bool   `json:"stale,omitempty"`
+	// Tests names per-test runs that ran its call toward the change.
+	Tests []string `json:"tests,omitempty"`
+	// Tested means a test runs the path or, unmeasured, calls it directly.
+	Tested bool `json:"tested"`
+	// Review marks direct callers no test is known to run the path of.
 	Review    bool `json:"review,omitempty"`
 	Heuristic bool `json:"heuristic,omitempty"`
 	// Entry says why a symbol with no callers is the top of a call path:
@@ -66,6 +92,8 @@ type ImpactRing struct {
 	Depth  int `json:"depth"`
 	Total  int `json:"total"`
 	Tested int `json:"tested"`
+	// Statuses counts callers by test status.
+	Statuses map[string]int `json:"statuses"`
 	// AvgPct is the mean coverage of callers with coverage data, or -1.
 	AvgPct   float64         `json:"avgPct"`
 	Packages []ImpactPackage `json:"packages"`
@@ -106,11 +134,146 @@ func (s *Service) impactOf(ctx context.Context, rt *RepoHandle, ix *analysis.Ind
 	a, _ := s.qaAnalyze(ctx, rt)
 	isTest := func(sym *analysis.Symbol) bool { return qa.IsTestFile(sym.File) }
 	r := ix.Reach(changed, impactDepth, isTest)
-	return buildImpact(ix, r, a)
+	return buildImpact(ix, r, a, s.impactCoverage(rt, a))
+}
+
+// impactCoverage is the measured coverage a blast radius is judged by.
+type impactCoverage struct {
+	report  *qa.Report
+	perTest map[string]*testCoverage
+	// mtime is a file's modification time, zero when unknown.
+	mtime func(file string) time.Time
+}
+
+// impactCoverage gathers the repository's coverage and per-test results.
+func (s *Service) impactCoverage(rt *RepoHandle, a *qaAnalysis) *impactCoverage {
+	cv := &impactCoverage{perTest: s.perTest(rt)}
+	if a != nil {
+		cv.report = a.report
+	}
+	times := map[string]time.Time{}
+	cv.mtime = func(file string) time.Time {
+		t, ok := times[file]
+		if !ok {
+			if abs, _, err := rt.ws.Resolve(file, defaults); err == nil {
+				if st, err := os.Stat(abs); err == nil {
+					t = st.ModTime()
+				}
+			}
+			times[file] = t
+		}
+		return t
+	}
+	return cv
+}
+
+// status judges whether tests run sym's calls toward the change, made at
+// lines sites. The changed code itself has no sites and is judged whole.
+// Per-test runs newer than the file name the tests; otherwise the
+// coverage report decides; without either, the static mapping estimates.
+func (cv *impactCoverage) status(sym *analysis.Symbol, sites []int, f *FuncQA) (n ImpactNode) {
+	n.Status = StatusUnknown
+	if f != nil && f.Direct > 0 {
+		n.Status = StatusLikely
+	}
+	if cv == nil {
+		return n
+	}
+	end := max(sym.EndLine, sym.Line)
+	fc := cv.report.File(sym.File)
+	mtime := cv.mtime(sym.File)
+	// The lines to look for: where a call statement is instrumented, or
+	// the whole function.
+	var want []int
+	if len(sites) > 0 {
+		want = siteLines(fc, sites, sym.Line)
+	} else {
+		for ln := sym.Line; ln <= end; ln++ {
+			want = append(want, ln)
+		}
+	}
+	for _, tc := range cv.perTest {
+		if !tc.Ran.After(mtime) {
+			continue
+		}
+		for _, ln := range want {
+			if tc.covers(sym.File, ln) {
+				n.Tests = append(n.Tests, tc.Name)
+				break
+			}
+		}
+	}
+	if len(n.Tests) > 0 {
+		sort.Strings(n.Tests)
+		n.Tests = n.Tests[:min(len(n.Tests), 5)]
+		n.Status, n.Measured = StatusPath, true
+		return n
+	}
+	if fc == nil {
+		return n
+	}
+	covered, lines := fc.CountsIn(sym.Line, end)
+	if lines == 0 {
+		return n
+	}
+	n.Measured = true
+	n.Stale = !mtime.IsZero() && mtime.After(cv.report.Generated.Add(time.Second))
+	switch {
+	case covered == 0:
+		n.Status = StatusNotRun
+	case len(sites) == 0 || len(want) == 0:
+		// The changed code, or a call coverage doesn't instrument: the
+		// function running is the best measure there is.
+		n.Status = StatusPath
+	default:
+		n.Status = StatusCaller
+		for _, ln := range want {
+			if fc.Hits[ln] > 0 {
+				n.Status = StatusPath
+				break
+			}
+		}
+	}
+	return n
+}
+
+// siteLines maps call sites to the lines coverage instruments for them:
+// the site itself, or the nearest instrumented line above it within the
+// function (where a statement spanning lines starts). Sites without one
+// are dropped; without coverage the sites are returned as they are.
+func siteLines(fc *qa.FileCoverage, sites []int, from int) []int {
+	if fc == nil {
+		return sites
+	}
+	var out []int
+	for _, s := range sites {
+		for ln := s; ln >= from && ln > s-5; ln-- {
+			if _, ok := fc.Hits[ln]; ok {
+				out = append(out, ln)
+				break
+			}
+		}
+	}
+	return out
+}
+
+// callSites are the lines where id calls a symbol one step closer to the
+// change.
+func callSites(ix *analysis.Index, r *analysis.Reach, id string, d int) []int {
+	var out []int
+	for _, e := range ix.Callees(id) {
+		if e.Kind == analysis.EdgeImport || e.Kind == analysis.EdgeImplement {
+			continue
+		}
+		if dt, ok := r.Dist[e.To]; ok && dt == d-1 {
+			out = append(out, e.Lines...)
+		}
+	}
+	return uniqueSorted(out)
 }
 
 // buildImpact shapes a reach into rings, entries and the package graph.
-func buildImpact(ix *analysis.Index, r *analysis.Reach, a *qaAnalysis) *Impact {
+func buildImpact(ix *analysis.Index, r *analysis.Reach, a *qaAnalysis, cv *impactCoverage) *Impact {
 	im := &Impact{Changed: []ImpactNode{}, Rings: []ImpactRing{}, Entries: []ImpactNode{}, PackageEdges: []ImpactEdge{},
 		PackageDepth: map[string]int{}, Beyond: r.Beyond}
 	if a != nil {
@@ -122,12 +285,19 @@ func buildImpact(ix *analysis.Index, r *analysis.Reach, a *qaAnalysis) *Impact {
 		if via := r.Via[id]; via != "" {
 			n.ViaID, n.Via = via, ix.Symbols[via].Qualified
 		}
+		var f *FuncQA
 		if a != nil {
-			if f := a.byID[id]; f != nil {
+			if f = a.byID[id]; f != nil {
 				n.Pct, n.Direct, n.Indirect = f.Pct, f.Direct, f.Indirect
-				n.Tested = f.Direct+f.Indirect > 0 || f.Pct > 0
 			}
 		}
+		var sites []int
+		if d > 0 {
+			sites = callSites(ix, r, id, d)
+		}
+		st := cv.status(sym, sites, f)
+		n.Status, n.Measured, n.Stale, n.Tests = st.Status, st.Measured, st.Stale, st.Tests
+		n.Tested = n.Status == StatusPath || n.Status == StatusLikely
 		n.Review = d == 1 && !n.Tested && (im.Tests || im.Coverage)
 		if !ix.HasCallers(id) {
 			switch {
@@ -174,7 +344,7 @@ func buildImpact(ix *analysis.Index, r *analysis.Reach, a *qaAnalysis) *Impact {
 	im.Summary = proposals.ImpactSummary{Changed: len(im.Changed), Callers: make([]int, impactDepth), Files: len(files), Packages: len(pkgs), Entries: len(im.Entries)}
 	for d := 1; d <= impactDepth; d++ {
 		nodes := byDepth[d]
-		ring := ImpactRing{Depth: d, Total: len(nodes), AvgPct: -1, Packages: []ImpactPackage{}}
+		ring := ImpactRing{Depth: d, Total: len(nodes), AvgPct: -1, Packages: []ImpactPackage{}, Statuses: map[string]int{}}
 		perPkg := map[string]*ImpactPackage{}
 		sum, withPct := 0.0, 0
 		for _, n := range nodes {
@@ -184,6 +354,7 @@ func buildImpact(ix *analysis.Index, r *analysis.Reach, a *qaAnalysis) *Impact {
 				perPkg[n.Package] = p
 			}
 			p.Count++
+			ring.Statuses[n.Status]++
 			if n.Tested {
 				p.Tested++
 				ring.Tested++
@@ -234,16 +405,16 @@ func buildImpact(ix *analysis.Index, r *analysis.Reach, a *qaAnalysis) *Impact {
 	return im
 }
 
-// sortImpact orders a ring for review: untested direct callers first, then
-// the least covered, then by name.
+// sortImpact orders a ring for review: direct callers to review first,
+// then by test status weakest first, the least covered, then by name.
 func sortImpact(ns []ImpactNode) {
 	sort.Slice(ns, func(i, j int) bool {
 		a, b := ns[i], ns[j]
 		if a.Review != b.Review {
 			return a.Review
 		}
-		if a.Tested != b.Tested {
-			return !a.Tested
+		if ra, rb := statusRank[a.Status], statusRank[b.Status]; ra != rb {
+			return ra < rb
 		}
 		if a.Pct != b.Pct {
 			return a.Pct < b.Pct

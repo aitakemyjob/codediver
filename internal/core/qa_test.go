@@ -47,8 +47,9 @@ func qaRepo(t *testing.T) (*Service, *RepoHandle, string) {
 	createLine, validateLine := lineOf(t, api, "func (h *Handler) CreateOrder"), lineOf(t, api, "func validate")
 	store := testutil.Files["store/store.go"]
 	saveLine := lineOf(t, store, "func (m *Memory) Save")
-	profile := fmt.Sprintf("mode: set\nexample.com/shop/api/api.go:%d.80,%d.2 3 1\nexample.com/shop/api/api.go:%d.36,%d.2 2 0\nexample.com/shop/store/store.go:%d.38,%d.2 2 1\nexample.com/elsewhere/x.go:1.1,2.2 1 1\n",
-		createLine, createLine+3, validateLine, validateLine+5, saveLine, saveLine+3)
+	// TestCreateOrder returns before CreateOrder calls validate (createLine+6).
+	profile := fmt.Sprintf("mode: set\nexample.com/shop/api/api.go:%d.80,%d.2 3 1\nexample.com/shop/api/api.go:%d.2,%d.30 1 0\nexample.com/shop/api/api.go:%d.36,%d.2 2 0\nexample.com/shop/store/store.go:%d.38,%d.2 2 1\nexample.com/elsewhere/x.go:1.1,2.2 1 1\n",
+		createLine, createLine+3, createLine+6, createLine+6, validateLine, validateLine+5, saveLine, saveLine+3)
 	write("coverage.out", profile)
 	s.Reindex(rt)
 	return s, rt, dir
@@ -65,7 +66,7 @@ func TestQAOverview(t *testing.T) {
 		t.Errorf("tests = %+v", ov.Tests)
 	}
 	// coverage.out was imported automatically; the external file is skipped.
-	if ov.Coverage == nil || ov.Coverage.Lines != 14 || ov.Coverage.Covered != 8 || len(ov.Coverage.Sources) != 1 || ov.Coverage.Sources[0].Skipped != 1 {
+	if ov.Coverage == nil || ov.Coverage.Lines != 15 || ov.Coverage.Covered != 8 || len(ov.Coverage.Sources) != 1 || ov.Coverage.Sources[0].Skipped != 1 {
 		t.Fatalf("coverage = %+v", ov.Coverage)
 	}
 	if len(ov.Gaps) == 0 || !strings.HasSuffix(ov.Gaps[0].Name, "validate") || ov.Gaps[0].Pct != 0 || ov.Gaps[0].Uncovered == "" {
@@ -135,7 +136,7 @@ func TestQAFileCoverageAndHeatmap(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !fc.Available || len(fc.Covered) != 4 || len(fc.Uncovered) != 6 || len(fc.Functions) < 3 {
+	if !fc.Available || len(fc.Covered) != 4 || len(fc.Uncovered) != 7 || len(fc.Functions) < 3 {
 		t.Fatalf("file coverage = %+v", fc)
 	}
 	tf, _ := s.FileCoverage(ctx, rt, "api/api_test.go")
@@ -146,7 +147,7 @@ func TestQAFileCoverageAndHeatmap(t *testing.T) {
 		t.Error("hidden files must stay hidden")
 	}
 	hm, err := s.Heatmap(ctx, rt, "coverage", "")
-	if err != nil || hm.Values["api/api.go"] != 6 || len(hm.Symbols["api/api.go"]) == 0 {
+	if err != nil || hm.Values["api/api.go"] != 7 || len(hm.Symbols["api/api.go"]) == 0 {
 		t.Fatalf("heatmap = %+v %v", hm, err)
 	}
 	// Editing a file after the report marks it stale.

@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aitakemyjob/codediver/internal/analysis"
 	"github.com/aitakemyjob/codediver/internal/gitx"
 	"github.com/aitakemyjob/codediver/internal/proposals"
 	"github.com/aitakemyjob/codediver/internal/qa"
@@ -69,16 +70,22 @@ func TestChangeReportForProposal(t *testing.T) {
 		t.Errorf("tests = %+v", cc.Tests)
 	}
 
-	// Direct callers come first, with their path to the change and tests.
+	// Direct callers come first, with their path to the change. Two tests
+	// call CreateOrder, but neither runs its call to validate: coverage
+	// decides over the static mapping, so it needs review.
 	im := r.Impact
 	if len(im.Changed) != 1 || im.Changed[0].Name != "validate" || len(im.Rings) == 0 {
 		t.Fatalf("impact = %+v", im)
 	}
 	direct := im.Rings[0]
-	if direct.Depth != 1 || direct.Total != 1 || direct.Nodes[0].Name != "Handler.CreateOrder" || direct.Nodes[0].Via != "validate" || !direct.Nodes[0].Tested || direct.Nodes[0].Review {
+	if n := direct.Nodes[0]; direct.Depth != 1 || direct.Total != 1 || n.Name != "Handler.CreateOrder" || n.Via != "validate" ||
+		n.Status != StatusCaller || !n.Measured || n.Direct == 0 || n.Tested || !n.Review || direct.Statuses[StatusCaller] != 1 {
 		t.Errorf("direct = %+v", direct)
 	}
-	if im.Summary.Callers[0] != 1 || im.Summary.Untested != 0 || !im.Tests || !im.Coverage {
+	if c := im.Changed[0]; c.Status != StatusNotRun || c.Tested {
+		t.Errorf("changed = %+v", c)
+	}
+	if im.Summary.Callers[0] != 1 || im.Summary.Untested != 1 || !im.Tests || !im.Coverage {
 		t.Errorf("summary = %+v", im.Summary)
 	}
 
@@ -207,5 +214,53 @@ func TestRunTestsMeasuresGoTests(t *testing.T) {
 	save := lineOf(t, testutil.Files["store/store.go"], "m.orders[o.ID] = o")
 	if tc == nil || !tc.Passed || !tc.covers("store/store.go", save) || len(tc.Lines["api/api.go"]) != 0 {
 		t.Fatalf("per-test coverage = %+v", tc)
+	}
+}
+
+func TestImpactStatus(t *testing.T) {
+	gen := time.Now()
+	fc := &qa.FileCoverage{Path: "api.go", Hits: map[int]int{10: 1, 11: 1, 12: 0, 14: 0, 20: 0, 21: 0}, Partial: map[int]bool{}}
+	report := &qa.Report{Files: map[string]*qa.FileCoverage{"api.go": fc}, Generated: gen}
+	mtime := gen.Add(-time.Hour)
+	cv := &impactCoverage{report: report, perTest: map[string]*testCoverage{}, mtime: func(string) time.Time { return mtime }}
+	handler := &analysis.Symbol{File: "api.go", Line: 10, EndLine: 15}
+	cases := []struct {
+		name  string
+		sym   *analysis.Symbol
+		sites []int
+		f     *FuncQA
+		want  string
+	}{
+		// The call at 11 ran; at 12 it didn't, though the handler did.
+		{"call ran", handler, []int{11}, nil, StatusPath},
+		{"call not run", handler, []int{12}, &FuncQA{Direct: 2, Indirect: 3}, StatusCaller},
+		// 13 continues the statement starting at 12.
+		{"continuation", handler, []int{13}, nil, StatusCaller},
+		{"changed code ran", handler, nil, nil, StatusPath},
+		{"nothing ran", &analysis.Symbol{File: "api.go", Line: 20, EndLine: 22}, []int{21}, &FuncQA{Direct: 1}, StatusNotRun},
+		// Not measured: a direct test is a likely estimate, indirect reach is not.
+		{"likely", &analysis.Symbol{File: "web.ts", Line: 1, EndLine: 5}, []int{2}, &FuncQA{Direct: 1}, StatusLikely},
+		{"unknown", &analysis.Symbol{File: "web.ts", Line: 1, EndLine: 5}, []int{2}, &FuncQA{Indirect: 4}, StatusUnknown},
+	}
+	for _, c := range cases {
+		if got := cv.status(c.sym, c.sites, c.f); got.Status != c.want {
+			t.Errorf("%s: status = %+v, want %s", c.name, got, c.want)
+		}
+	}
+	if (*impactCoverage)(nil).status(handler, []int{11}, &FuncQA{Direct: 1}).Status != StatusLikely {
+		t.Error("without coverage the static mapping estimates")
+	}
+
+	// A per-test run newer than the file names the tests running the call.
+	cv.perTest["t1"] = &testCoverage{ID: "t1", Name: "TestCreate", Ran: gen, Lines: map[string][]int{"api.go": {10, 12}}}
+	cv.perTest["t0"] = &testCoverage{ID: "t0", Name: "TestOld", Ran: mtime.Add(-time.Minute), Lines: map[string][]int{"api.go": {12}}}
+	if n := cv.status(handler, []int{12}, nil); n.Status != StatusPath || !n.Measured || len(n.Tests) != 1 || n.Tests[0] != "TestCreate" {
+		t.Errorf("per-test = %+v", n)
+	}
+
+	// Coverage older than the file is still used, but marked stale.
+	mtime = gen.Add(time.Hour)
+	if n := cv.status(handler, []int{11}, nil); n.Status != StatusPath || !n.Stale {
+		t.Errorf("stale = %+v", n)
 	}
 }

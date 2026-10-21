@@ -314,20 +314,40 @@ export interface ImpactNode {
   viaId?: string;
   /** Line coverage, -1 without coverage data. */
   pct: number;
+  /** Tests that call it, or might reach it, by the static test mapping. */
   direct: number;
   indirect: number;
+  /** Whether tests run its call toward the change; see TestStatus. */
+  status: TestStatus;
+  /** The status comes from coverage, not the static mapping. */
+  measured: boolean;
+  /** The coverage is older than the file. */
+  stale?: boolean;
+  /** Per-test runs that ran its call toward the change. */
+  tests?: string[];
+  /** A test runs the path or, unmeasured, calls it directly. */
   tested: boolean;
-  /** A direct caller no test reaches. */
+  /** A direct caller no test is known to run the path of. */
   review?: boolean;
   heuristic?: boolean;
   /** Why nothing calls it: main, exported or uncalled. */
   entry?: 'main' | 'exported' | 'uncalled';
 }
 
+/**
+ * How far tests reach a blast-radius node, strongest evidence first:
+ * path (a test ran its call toward the change), caller (it ran, that call
+ * didn't), notrun (none of it ran), likely (unmeasured; a test calls it)
+ * and unknown.
+ */
+export type TestStatus = 'path' | 'caller' | 'notrun' | 'likely' | 'unknown';
+
 export interface ImpactRing {
   depth: number;
   total: number;
   tested: number;
+  /** Callers by test status. */
+  statuses: Partial<Record<TestStatus, number>>;
   avgPct: number;
   packages: { path: string; count: number; tested: number }[];
   nodes: ImpactNode[];

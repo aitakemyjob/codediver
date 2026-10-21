@@ -12,18 +12,18 @@ import { diffMarks, hasGaps, nodesById, packageGraph, pathToChange, testPrompt, 
 import { ImpactPanel } from './ImpactPanel';
 import { TestsPanel } from './TestsPanel';
 
-const node = (o: Partial<ImpactNode>): ImpactNode => ({ id: o.name!, name: '', kind: 'func', file: 'a.go', line: 1, package: 'api', depth: 0, pct: -1, direct: 0, indirect: 0, tested: false, ...o });
+const node = (o: Partial<ImpactNode>): ImpactNode => ({ id: o.name!, name: '', kind: 'func', file: 'a.go', line: 1, package: 'api', depth: 0, pct: -1, direct: 0, indirect: 0, status: 'unknown', measured: false, tested: false, ...o });
 
-const validate = node({ id: 'v', name: 'validate', file: 'api/api.go', line: 36, tested: true, indirect: 1, pct: 0 });
-const create = node({ id: 'c', name: 'Handler.CreateOrder', file: 'api/api.go', line: 18, depth: 1, via: 'validate', viaId: 'v', tested: true, direct: 2, pct: 82 });
-const save = node({ id: 's', name: 'Batch.Save', file: 'api/batch.go', line: 5, depth: 1, via: 'validate', viaId: 'v', review: true });
+const validate = node({ id: 'v', name: 'validate', file: 'api/api.go', line: 36, indirect: 1, pct: 0, status: 'notrun', measured: true });
+const create = node({ id: 'c', name: 'Handler.CreateOrder', file: 'api/api.go', line: 18, depth: 1, via: 'validate', viaId: 'v', tested: true, direct: 2, pct: 82, status: 'path', measured: true, tests: ['TestCreate'] });
+const save = node({ id: 's', name: 'Batch.Save', file: 'api/batch.go', line: 5, depth: 1, via: 'validate', viaId: 'v', review: true, direct: 1, pct: 60, status: 'caller', measured: true });
 const main = node({ id: 'm', name: 'main', file: 'cmd/shop/main.go', line: 10, package: 'cmd/shop', depth: 2, via: 'Handler.CreateOrder', viaId: 'c', entry: 'main' });
 
 const impact: Impact = {
   changed: [validate],
   rings: [
-    { depth: 1, total: 3, tested: 1, avgPct: 41, packages: [{ path: 'api', count: 3, tested: 1 }], nodes: [save, create], more: 1 },
-    { depth: 2, total: 1, tested: 0, avgPct: -1, packages: [{ path: 'cmd/shop', count: 1, tested: 0 }], nodes: [main] },
+    { depth: 1, total: 3, tested: 1, statuses: { caller: 1, path: 1, likely: 1 }, avgPct: 41, packages: [{ path: 'api', count: 3, tested: 1 }], nodes: [save, create], more: 1 },
+    { depth: 2, total: 1, tested: 0, statuses: { unknown: 1 }, avgPct: -1, packages: [{ path: 'cmd/shop', count: 1, tested: 0 }], nodes: [main] },
   ],
   entries: [main],
   beyond: 2,
@@ -58,8 +58,9 @@ describe('change helpers', () => {
   });
 
   it('summarizes test status and builds the package graph', () => {
-    expect(testStatus(create)).toBe('82.0% · 2 direct');
-    expect(testStatus(save)).toBe('no tests');
+    expect(testStatus(create)).toBe('Tests run its call toward the change (TestCreate) · measured · 82.0% covered · 2 calling · 0 reaching tests');
+    expect(testStatus(save)).toBe('Tests run it, but not its call toward the change · measured · 60.0% covered · 1 calling · 0 reaching tests');
+    expect(testStatus(main)).toBe('No coverage, and no test calls it · estimated');
     const g = packageGraph(impact);
     expect(g.nodes.find((n) => n.id === 'api')).toMatchObject({ root: true, sublabel: 'changed' });
     expect(g.nodes.find((n) => n.id === 'cmd/shop')?.sublabel).toBe('2 calls away');
@@ -84,7 +85,7 @@ describe('change helpers', () => {
     const p = testPrompt(report);
     expect(p).toContain('"Accept qty 1"');
     expect(p).toContain('api/api.go:37-38');
-    expect(p).toContain('Untested direct callers: Batch.Save');
+    expect(p).toContain('Direct callers whose call toward the change no test runs: Batch.Save');
   });
 });
 
@@ -93,7 +94,11 @@ describe('ImpactPanel', () => {
     render(<ImpactPanel impact={impact} />);
     expect(screen.getByText('Direct callers')).toBeInTheDocument();
     expect(screen.getByText('Batch.Save')).toBeInTheDocument(); // open by default
-    expect(screen.getByText('untested')).toBeInTheDocument();
+    // Each caller says how far tests reach it; the ring counts by status.
+    expect(screen.getByText('call not run', { selector: '.impact-row span' })).toBeInTheDocument();
+    expect(screen.getByText('runs the path', { selector: '.impact-row span' })).toBeInTheDocument();
+    expect(screen.getByText('1 to review')).toBeInTheDocument();
+    expect(screen.getByText('· not run')).toBeInTheDocument(); // the changed validate
     expect(screen.getByText('+1 more not listed')).toBeInTheDocument();
     // The second ring starts collapsed with package counts; it expands on click.
     expect(screen.queryByText('main', { selector: '.impact-row .mono' })).toBeNull();

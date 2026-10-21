@@ -171,7 +171,7 @@ func (s *Service) ChangeReport(ctx context.Context, rt *RepoHandle, ref ChangeRe
 	}
 
 	a, _ := s.qaAnalyze(ctx, rt)
-	out.Impact = buildImpact(ix, ix.Reach(changed, impactDepth, func(sym *analysis.Symbol) bool { return qa.IsTestFile(sym.File) }), a)
+	out.Impact = buildImpact(ix, ix.Reach(changed, impactDepth, func(sym *analysis.Symbol) bool { return qa.IsTestFile(sym.File) }), a, s.impactCoverage(rt, a))
 	out.Coverage = s.changeCoverage(rt, ix, a, files, out.Impact)
 	out.Coverage.Approximate = approximate
 	return out, nil

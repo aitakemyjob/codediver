@@ -1,6 +1,6 @@
 // Pure helpers for a change's blast radius and tests panels (unit-tested
 // in change.test.ts).
-import type { ChangeFile, ChangeReport, Graph, Impact, ImpactNode } from '../../lib/types';
+import type { ChangeFile, ChangeReport, Graph, Impact, ImpactNode, TestStatus } from '../../lib/types';
 import { pctLabel } from '../qa/qa';
 
 /** Every node of a blast radius by id. */
@@ -28,13 +28,29 @@ export function pathToChange(n: ImpactNode, byId: Map<string, ImpactNode>): stri
   return out;
 }
 
-/** Short test status of a node: "82% · 3 direct · 2 indirect". */
+/** How each test status reads, weakest first, and its color. */
+export const statusInfo: Record<TestStatus, { label: string; long: string; tone: string }> = {
+  notrun: { label: 'not run', long: 'No test runs it', tone: 'var(--err)' },
+  caller: { label: 'call not run', long: 'Tests run it, but not its call toward the change', tone: 'var(--err)' },
+  unknown: { label: 'unknown', long: 'No coverage, and no test calls it', tone: 'var(--text-3)' },
+  likely: { label: 'likely tested', long: 'A test calls it; not measured', tone: 'var(--text-2)' },
+  path: { label: 'runs the path', long: 'Tests run its call toward the change', tone: 'var(--ok)' },
+};
+
+/** Statuses weakest first, the order counts are listed in. */
+export const statusOrder = Object.keys(statusInfo) as TestStatus[];
+
+/**
+ * A node's test status in full: "Tests run its call toward the change
+ * (TestCreate) · measured · 82%".
+ */
 export function testStatus(n: ImpactNode): string {
-  const parts: string[] = [];
-  if (n.pct >= 0) parts.push(pctLabel(n.pct));
-  if (n.direct) parts.push(`${n.direct} direct`);
-  if (n.indirect) parts.push(`${n.indirect} indirect`);
-  return parts.length ? parts.join(' · ') : 'no tests';
+  const info = statusInfo[n.status] ?? statusInfo.unknown;
+  const parts = [info.long + (n.tests?.length ? ` (${n.tests.join(', ')})` : '')];
+  parts.push(n.measured ? (n.stale ? 'measured, but the file changed since' : 'measured') : 'estimated');
+  if (n.pct >= 0) parts.push(`${pctLabel(n.pct)} covered`);
+  if (n.direct || n.indirect) parts.push(`${n.direct} calling · ${n.indirect} reaching tests`);
+  return parts.join(' · ');
 }
 
 /** The blast radius as a package graph: the changed packages at the center. */
@@ -103,7 +119,7 @@ export function testPrompt(r: ChangeReport): string {
   const lines = [`Add tests for ${r.title ? `"${r.title}"` : 'this change'}.`];
   if (parts.length) lines.push(`Changed lines no test runs: ${parts.join('; ')}.`);
   if (fns.length) lines.push(`Changed functions no test reaches: ${fns.join(', ')}.`);
-  if (callers.length) lines.push(`Untested direct callers: ${callers.join(', ')}.`);
+  if (callers.length) lines.push(`Direct callers whose call toward the change no test runs: ${callers.join(', ')}.`);
   lines.push('Use get_tests_for_change for details, then propose_changes with the tests.');
   return lines.join('\n');
 }
