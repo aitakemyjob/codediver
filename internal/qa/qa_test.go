@@ -404,6 +404,7 @@ const el = (<Toolbar
 	}{
 		{"go", "parse(\"NewStore(path)\", `s.AddRepo(dir)`) // Drop(x)\n/* Skip() */ check(1)", []Call{{"", "parse"}, {"", "check"}}},
 		{"typescript", "expect(`total ${sum(xs)} of fake()`).toBe('Other()')", []Call{{"", "sum"}}},
+		{"typescript", "store?.save(o)", []Call{{"store", "save"}}},
 		{"python", "assert run('''\nhelper()\n''') == \"Thing()\"  # ignore()", []Call{{"", "run"}}},
 	}
 	for _, c := range cases {

@@ -20,15 +20,29 @@ type defPattern struct {
 	name    int  // capture group of the name
 	params  int  // capture group of the parameter list, 0 if none
 	needsIn bool // only matches inside a class/impl body (methods)
+	// in narrows needsIn to one container kind (KindClass, kindObject).
+	in SymbolKind
 }
 
+// kindObject is an object literal assigned to a name or default-exported
+// (`const api = {`, `export default {`). It holds methods like a class but
+// isn't a symbol itself: its methods are qualified by its name.
+const kindObject SymbolKind = "object"
+
+// definable are keywords that may still name a definition: constructors,
+// and methods such as delete or new (Rust's fn new, a store's delete).
+var definable = map[string]bool{"constructor": true, "new": true, "delete": true}
+
 type langSpec struct {
-	defs      []defPattern
-	imports   []*regexp.Regexp
-	block     string // "brace" | "indent" | "end"
-	lineCmt   []string
-	blockCmt  [2]string
-	strDelims string
+	defs    []defPattern
+	imports []*regexp.Regexp
+	// fileImports match across lines on the whole source (multi-line
+	// `import {…} from`).
+	fileImports []*regexp.Regexp
+	block       string // "brace" | "indent" | "end"
+	lineCmt     []string
+	blockCmt    [2]string
+	strDelims   string
 	// interp marks `${…}` in backtick strings as code (template literals).
 	interp     bool
 	extensions []string // used when resolving extension-less imports
@@ -133,15 +147,30 @@ func jsSpec() *langSpec {
 		defs: []defPattern{
 			{re: rx(`^\s*(?:export\s+)?(?:default\s+)?(?:abstract\s+)?class\s+([A-Za-z_$][\w$]*)`), kind: KindClass, name: 1},
 			{re: rx(`^\s*(?:export\s+)?(?:declare\s+)?interface\s+([A-Za-z_$][\w$]*)`), kind: KindInterface, name: 1},
+			// Anonymous default exports are named "default".
+			{re: rx(`^\s*export\s+(default)\s+(?:async\s+)?function\s*\*?\s*\(([^)]*)`), kind: KindFunc, name: 1, params: 2},
+			{re: rx(`^\s*export\s+(default)\s+(?:async\s+)?\(([^)]*)\)\s*(?::[^=]+)?=>`), kind: KindFunc, name: 1, params: 2},
 			{re: rx(`^\s*(?:export\s+)?(?:default\s+)?(?:async\s+)?function\s*\*?\s*([A-Za-z_$][\w$]*)\s*(?:<[^>]*>)?\s*\(([^)]*)`), kind: KindFunc, name: 1, params: 2},
 			{re: rx(`^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:async\s+)?(?:function\s*\*?\s*)?\(([^)]*)\)?[^=]*=>`), kind: KindFunc, name: 1, params: 2},
 			{re: rx(`^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*(?:async\s+)?function\b\s*\*?\s*\(([^)]*)`), kind: KindFunc, name: 1, params: 2},
-			{re: rx(`^\s*(?:(?:public|private|protected|static|async|readonly|override|abstract|get|set)\s+)*\*?\s*([A-Za-z_$#][\w$]*)\s*(?:<[^>]*>)?\s*\(([^)]*)\)\s*(?::\s*[^{=;]+)?\{\s*$`), kind: KindMethod, name: 1, params: 2, needsIn: true},
+			// Object literals holding methods: Workers' `export default {
+			// fetch() {…} }`, `const api = { list() {…} }`.
+			{re: rx(`^\s*(?:export\s+)?(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*(?::[^=]+)?=\s*\{\s*$`), kind: kindObject, name: 1},
+			{re: rx(`^\s*export\s+(default)\s*\{\s*$`), kind: kindObject, name: 1},
+			// Class fields holding arrow functions: `onClick = (e) => {…}`.
+			{re: rx(`^\s*(?:(?:public|private|protected|static|readonly|override)\s+)*([A-Za-z_$#][\w$]*)\s*(?::[^=]+)?=\s*(?:async\s+)?(?:\(([^)]*)\)|[A-Za-z_$][\w$]*)\s*(?::[^=]+?)?=>`), kind: KindMethod, name: 1, params: 2, needsIn: true, in: KindClass},
+			// Object-literal properties holding functions: `get: () => …`.
+			{re: rx(`^\s*([A-Za-z_$][\w$]*)\s*:\s*(?:async\s+)?(?:function\s*\*?\s*)?(?:\(([^)]*)\)|[A-Za-z_$][\w$]*)\s*(?::[^=]+?)?(?:=>|\{)`), kind: KindMethod, name: 1, params: 2, needsIn: true, in: kindObject},
+			// Methods; the body may continue on the same line.
+			{re: rx(`^\s*(?:(?:public|private|protected|static|async|readonly|override|abstract|get|set)\s+)*\*?\s*([A-Za-z_$#][\w$]*)\s*(?:<[^>]*>)?\s*\(([^)]*)\)\s*(?::\s*[^{=;]+)?\{`), kind: KindMethod, name: 1, params: 2, needsIn: true},
 		},
 		imports: []*regexp.Regexp{
 			rx(`^\s*import\s+(?:[^'"]*\s+from\s+)?['"]([^'"]+)['"]`),
 			rx(`^\s*export\s+[^'"]*\s+from\s+['"]([^'"]+)['"]`),
 			rx(`require\(\s*['"]([^'"]+)['"]\s*\)`),
+		},
+		fileImports: []*regexp.Regexp{
+			rx(`(?m)^\s*(?:import|export)\s+(?:type\s+)?(?:[\w$]+\s*,\s*)?\{[^}]*\}\s*from\s*['"]([^'"]+)['"]`),
 		},
 		block:      "brace",
 		lineCmt:    []string{"//"},
@@ -497,9 +526,15 @@ type genericFile struct {
 	raw     []string
 	syms    []*Symbol
 	imports []string
+	// extends maps a class's ID to the name of the class it extends.
+	extends map[string]string
 }
 
-var callRe = regexp.MustCompile(`(?:(this|self|[A-Za-z_$][\w$]*)\s*(?:\.|::|->)\s*)?([A-Za-z_$][\w$]*)\s*\(`)
+var callRe = regexp.MustCompile(`(?:(this|self|[A-Za-z_$][\w$]*)\s*(?:\?\.|\.|::|->)\s*)?([A-Za-z_$][\w$]*)\s*\(`)
+
+// extendsRe finds a class's parent in `class A extends B` (JS/TS, Java,
+// Dart, Scala); qualified parents (ns.Base) keep their last name.
+var extendsRe = regexp.MustCompile(`\bextends\s+(?:[A-Za-z_$][\w$]*\.)*([A-Za-z_$][\w$]*)`)
 
 var (
 	// jsxRe finds rendered components: <Foo …>, <Foo/>, <ns.Foo>. The tag
@@ -553,6 +588,11 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 				if m := re.FindStringSubmatch(line); m != nil {
 					gf.imports = append(gf.imports, m[1])
 				}
+			}
+		}
+		for _, re := range sp.fileImports {
+			for _, m := range re.FindAllStringSubmatch(src, -1) {
+				gf.imports = appendUnique(gf.imports, m[1])
 			}
 		}
 		gfiles = append(gfiles, gf)
@@ -633,7 +673,14 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 					if keywords[name] {
 						continue
 					}
-					target := pickTarget(s, recv, byName[name], gf.path)
+					var target *Symbol
+					if recv == "super" {
+						// The parent class's method, when the parent is in
+						// the repository; never the caller's own.
+						target = superTarget(gf.extends[s.Parent], byName[name])
+					} else {
+						target = pickTarget(s, recv, byName[name], gf.path)
+					}
 					if target == nil || target.ID == s.ID && recv == "" {
 						continue
 					}
@@ -675,6 +722,20 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 	}
 }
 
+// superTarget finds the method a super.name() call reaches: the method
+// called name on the class parent (or nil when the parent is unknown).
+func superTarget(parent string, cands []*Symbol) *Symbol {
+	if parent == "" {
+		return nil
+	}
+	for _, c := range cands {
+		if c.Kind == KindMethod && c.Receiver == parent {
+			return c
+		}
+	}
+	return nil
+}
+
 // appendUnique appends s to list unless it is already present.
 func appendUnique(list []string, s string) []string {
 	for _, x := range list {
@@ -701,14 +762,14 @@ func parseDefs(gf *genericFile, sp *langSpec) {
 		var container *Symbol
 		for j := len(scopes) - 1; j >= 0; j-- {
 			k := scopes[j].sym.Kind
-			if k == KindClass || k == KindInterface || k == KindStruct || k == "impl" {
+			if k == KindClass || k == KindInterface || k == KindStruct || k == "impl" || k == kindObject {
 				container = scopes[j].sym
 				break
 			}
 		}
 		insideFunc := len(scopes) > 0 && scopes[len(scopes)-1].sym.Kind.IsCallable()
 		for _, d := range sp.defs {
-			if d.needsIn && (container == nil || insideFunc) {
+			if d.needsIn && (container == nil || insideFunc || d.in != "" && container.Kind != d.in) {
 				continue
 			}
 			m := d.re.FindStringSubmatch(line)
@@ -716,7 +777,7 @@ func parseDefs(gf *genericFile, sp *langSpec) {
 				continue
 			}
 			name := m[d.name]
-			if keywords[name] || name == "" {
+			if keywords[name] && !definable[name] || name == "" {
 				continue
 			}
 			// C-family method heuristic must not fire on calls / control flow.
@@ -748,28 +809,38 @@ func parseDefs(gf *genericFile, sp *langSpec) {
 			if container != nil && kind == KindMethod {
 				cname := container.Name
 				s.Parent = container.ID
-				if container.Kind == "impl" {
+				switch container.Kind {
+				case "impl":
 					// Attach Rust impl methods to the struct when we know it.
-					cname = container.Name
 					s.Parent = "h:" + gf.path + "#" + cname
+				case kindObject:
+					s.Parent = "" // the object literal isn't a symbol
 				}
 				s.Receiver = cname
 				s.Qualified = cname + "." + name
 			}
 			s.ID = fmt.Sprintf("h:%s#%s", gf.path, s.Qualified)
-			if kind == "impl" {
-				s.ID = fmt.Sprintf("h:%s#impl %s@%d", gf.path, name, ln)
+			if kind == "impl" || kind == kindObject {
+				s.ID = fmt.Sprintf("h:%s#%s %s@%d", gf.path, kind, name, ln)
 			}
 			s.Exported = isExportedGuess(gf.lang, name, gf.raw[i])
 			s.Complexity = heuristicComplexity(gf.lines[i:min(end, len(gf.lines))])
 			if prev := docAbove(gf.raw, i, sp); prev != "" {
 				s.Doc = prev
 			}
-			if kind != "impl" {
+			if kind != "impl" && kind != kindObject {
 				gf.syms = append(gf.syms, s)
 			}
 			if container != nil && kind == KindMethod {
 				container.Methods = append(container.Methods, s.ID)
+			}
+			if kind == KindClass {
+				if m := extendsRe.FindStringSubmatch(line); m != nil {
+					if gf.extends == nil {
+						gf.extends = map[string]string{}
+					}
+					gf.extends[s.ID] = m[1]
+				}
 			}
 			scopes = append(scopes, scope{sym: s, end: end})
 			break

@@ -573,3 +573,178 @@ def other(cache):
 		t.Error("receiverMatches")
 	}
 }
+
+// TypeScript definitions the method and function patterns used to miss
+// (#61): constructors, bodies on the signature line, class-field arrows,
+// object-literal methods and anonymous default exports.
+func TestGenericTypeScriptDefinitions(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"src/store.ts": `export class SqlStore {
+  constructor(private db: Db) { this.init() }
+  init() { return connect() }
+  save(o: Order) { return this.write(o) }
+  write(o: Order) {
+    return 1
+  }
+  onClick = () => {
+    this.save(null)
+  }
+  handle = async (e: Event) => this.write(e)
+  onChange: (v: string) => void
+  delete(id: string) { return drop(id) }
+}
+
+export function connect() {}
+export function drop(id: string) {}
+`,
+		"src/worker.ts": `export default {
+  async fetch(req: Request, env: Env) {
+    return route(req)
+  },
+  scheduled: async (ev: Event) => {
+    sweep()
+  },
+}
+
+const api = {
+  list() { return route(null) },
+  limit: 10,
+}
+
+function route(req: Request) { return new SqlStore(db) }
+function sweep() {}
+`,
+		"src/main.ts": `export default function () {
+  sweep()
+}
+`,
+		"src/types.ts": `export interface Saver {
+  save: (o: Order) => void;
+  onChange(v: string): void;
+}
+`,
+	})
+	ix := Build(root, files, testLang)
+	want := map[string]SymbolKind{
+		"h:src/store.ts#SqlStore.constructor": KindMethod,
+		"h:src/store.ts#SqlStore.init":        KindMethod,
+		"h:src/store.ts#SqlStore.save":        KindMethod,
+		"h:src/store.ts#SqlStore.onClick":     KindMethod,
+		"h:src/store.ts#SqlStore.handle":      KindMethod,
+		"h:src/store.ts#SqlStore.delete":      KindMethod,
+		"h:src/worker.ts#default.fetch":       KindMethod,
+		"h:src/worker.ts#default.scheduled":   KindMethod,
+		"h:src/worker.ts#api.list":            KindMethod,
+		"h:src/main.ts#default":               KindFunc,
+	}
+	for id, kind := range want {
+		if s := ix.Symbols[id]; s == nil || s.Kind != kind {
+			t.Errorf("%s = %+v, want a %s", id, s, kind)
+		}
+	}
+	if s := ix.Symbols["h:src/store.ts#SqlStore.write"]; s == nil || s.EndLine != 7 {
+		t.Errorf("write = %+v", s)
+	}
+	if s := ix.Symbols["h:src/store.ts#SqlStore.save"]; s == nil || s.EndLine != 4 {
+		t.Errorf("one-line save = %+v", s)
+	}
+	// Typed fields and interface members have no body: not functions. The
+	// object literals themselves aren't symbols either.
+	for _, id := range []string{"h:src/store.ts#SqlStore.onChange", "h:src/types.ts#Saver.save", "h:src/types.ts#Saver.onChange",
+		"h:src/worker.ts#default", "h:src/worker.ts#api", "h:src/worker.ts#api.limit"} {
+		if s := ix.Symbols[id]; s != nil {
+			t.Errorf("%s should not be a symbol: %+v", id, s)
+		}
+	}
+	edges := [][2]string{
+		{"h:src/store.ts#SqlStore.constructor", "h:src/store.ts#SqlStore.init"},
+		{"h:src/store.ts#SqlStore.init", "h:src/store.ts#connect"},
+		{"h:src/store.ts#SqlStore.save", "h:src/store.ts#SqlStore.write"},
+		{"h:src/store.ts#SqlStore.onClick", "h:src/store.ts#SqlStore.save"},
+		{"h:src/store.ts#SqlStore.handle", "h:src/store.ts#SqlStore.write"},
+		{"h:src/store.ts#SqlStore.delete", "h:src/store.ts#drop"},
+		{"h:src/worker.ts#default.fetch", "h:src/worker.ts#route"},
+		{"h:src/worker.ts#default.scheduled", "h:src/worker.ts#sweep"},
+		{"h:src/worker.ts#api.list", "h:src/worker.ts#route"},
+		{"h:src/main.ts#default", "h:src/worker.ts#sweep"},
+		// new SqlStore() reaches the constructor, not just the class.
+		{"h:src/worker.ts#route", "h:src/store.ts#SqlStore.constructor"},
+	}
+	for _, e := range edges {
+		if !hasEdge(ix, e[0], e[1], EdgeCall) {
+			t.Errorf("%s should call %s: %+v", e[0], e[1], ix.Callees(e[0]))
+		}
+	}
+}
+
+// Optional chaining keeps its receiver, super calls go to the parent class,
+// and multi-line imports count as dependencies (#62).
+func TestGenericTypeScriptEdges(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"src/base.ts": `export class Base {
+  handle() {
+    return 1
+  }
+}
+`,
+		"src/child.ts": `import { Base } from './base'
+
+export class Child extends Base {
+  handle() {
+    super.handle()
+    return obj?.helper()
+  }
+}
+
+export class Orphan extends External {
+  handle() {
+    return super.handle()
+  }
+}
+
+export class Widget {
+  helper() {
+    return 2
+  }
+  render() {
+    return this?.helper()
+  }
+}
+`,
+		"src/lib/helper.ts": `export function helper() {}
+`,
+		"src/app/main.ts": `import {
+  helper,
+} from '../lib/helper'
+export {
+  Base,
+} from '../base'
+`,
+	})
+	ix := Build(root, files, testLang)
+	child := "h:src/child.ts#Child.handle"
+	if !hasEdge(ix, child, "h:src/base.ts#Base.handle", EdgeCall) {
+		t.Errorf("super.handle() should call Base.handle: %+v", ix.Callees(child))
+	}
+	if hasEdge(ix, child, child, EdgeCall) {
+		t.Error("super.handle() is not recursion")
+	}
+	// obj?.helper() is a method on obj, not the free function helper.
+	if hasEdge(ix, child, "h:src/lib/helper.ts#helper", EdgeCall) {
+		t.Errorf("obj?.helper() linked to the free function: %+v", ix.Callees(child))
+	}
+	if !hasEdge(ix, "h:src/child.ts#Widget.render", "h:src/child.ts#Widget.helper", EdgeCall) {
+		t.Errorf("this?.helper() should call Widget.helper: %+v", ix.Callees("h:src/child.ts#Widget.render"))
+	}
+	// A parent outside the repo: no edge rather than a wrong one.
+	if es := ix.Callees("h:src/child.ts#Orphan.handle"); len(es) != 0 {
+		t.Errorf("super into an unknown parent = %+v", es)
+	}
+	deps := map[string]bool{}
+	for _, e := range ix.PkgEdges {
+		deps[e.From+" → "+e.To] = true
+	}
+	if !deps["dir:src/app → dir:src/lib"] || !deps["dir:src/app → dir:src"] {
+		t.Errorf("multi-line import and re-export should be dependencies: %v", deps)
+	}
+}
