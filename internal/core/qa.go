@@ -717,6 +717,25 @@ type qaAnalysis struct {
 	byID   map[string]*FuncQA
 	report *qa.Report
 	files  []string
+	// testMods are Rust #[cfg(test)] module line ranges per file.
+	testMods map[string][][2]int
+}
+
+// isTestCode reports whether sym is test code: in a test file, or in a
+// Rust test module. It works on a nil analysis (test files only).
+func (a *qaAnalysis) isTestCode(sym *analysis.Symbol) bool {
+	if qa.IsTestFile(sym.File) {
+		return true
+	}
+	if a == nil {
+		return false
+	}
+	for _, r := range a.testMods[sym.File] {
+		if sym.Line >= r[0] && sym.Line <= r[1] {
+			return true
+		}
+	}
+	return false
 }
 
 var (
@@ -755,7 +774,7 @@ func (s *Service) qaAnalyze(ctx context.Context, rt *RepoHandle) (*qaAnalysis, e
 	if err != nil {
 		return nil, err
 	}
-	a := &qaAnalysis{byID: map[string]*FuncQA{}, report: report, files: files}
+	a := &qaAnalysis{byID: map[string]*FuncQA{}, report: report, files: files, testMods: map[string][][2]int{}}
 	contents := map[string][]string{}
 	readLines := func(f string) []string {
 		if l, ok := contents[f]; ok {
@@ -772,6 +791,9 @@ func (s *Service) qaAnalyze(ctx context.Context, rt *RepoHandle) (*qaAnalysis, e
 	// Discover tests.
 	suites, _ := s.QASuites(rt)
 	isTest := map[string]bool{}
+	// Rust keeps unit tests in #[cfg(test)] modules beside the code: those
+	// lines are test code (a.testMods).
+	inTests := func(sym *analysis.Symbol) bool { return isTest[sym.File] || a.isTestCode(sym) }
 	for _, f := range files {
 		lang := workspace.Language(f)
 		if !workspace.IsCode(lang) {
@@ -792,6 +814,8 @@ func (s *Service) qaAnalyze(ctx context.Context, rt *RepoHandle) (*qaAnalysis, e
 		}
 		if named {
 			isTest[f] = true
+		} else {
+			a.testMods[f] = qa.TestModules(src)
 		}
 		found := qa.Discover(f, lang, src)
 		if tool := suiteTool(suites, f); tool != "" {
@@ -807,7 +831,7 @@ func (s *Service) qaAnalyze(ctx context.Context, rt *RepoHandle) (*qaAnalysis, e
 	// Callable code symbols by name (test files excluded).
 	byName := map[string][]*analysis.Symbol{}
 	for _, sym := range ix.Symbols {
-		if sym.Kind == analysis.KindExternal || sym.File == "" || isTest[sym.File] {
+		if sym.Kind == analysis.KindExternal || sym.File == "" || inTests(sym) {
 			continue
 		}
 		byName[sym.Name] = append(byName[sym.Name], sym)
@@ -860,7 +884,7 @@ func (s *Service) qaAnalyze(ctx context.Context, rt *RepoHandle) (*qaAnalysis, e
 
 	// Score every function.
 	for _, sym := range ix.Symbols {
-		if !sym.Kind.IsCallable() || sym.Kind == analysis.KindExternal || sym.Abstract || sym.File == "" || isTest[sym.File] {
+		if !sym.Kind.IsCallable() || sym.Kind == analysis.KindExternal || sym.Abstract || sym.File == "" || inTests(sym) {
 			continue
 		}
 		f := &FuncQA{ID: sym.ID, Name: sym.Qualified, Kind: string(sym.Kind), File: sym.File, Line: sym.Line, EndLine: max(sym.EndLine, sym.Line),
@@ -975,11 +999,15 @@ func testFileContext(file string, lines []string, tests []qa.TestCase) (map[stri
 		if m == nil || testLines[i+1] || strings.HasPrefix(m[1], "Test") || strings.HasPrefix(m[1], "test") {
 			continue
 		}
-		// Helper bodies end at the next line with no indentation.
+		// A helper's body ends at the next line indented no deeper than
+		// its definition (a helper nested in describe ends inside it),
+		// including a closing brace or `end` there.
+		base := len(l) - len(strings.TrimLeft(l, " \t"))
 		end := i + 1
 		for ; end < len(lines) && end < i+80; end++ {
-			if t := lines[end]; t != "" && t[0] != ' ' && t[0] != '\t' {
-				if strings.HasPrefix(t, "}") || strings.HasPrefix(t, ")") {
+			t := strings.TrimLeft(lines[end], " \t")
+			if t != "" && len(lines[end])-len(t) <= base {
+				if strings.HasPrefix(t, "}") || strings.HasPrefix(t, ")") || t == "end" {
 					end++
 				}
 				break
@@ -990,15 +1018,25 @@ func testFileContext(file string, lines []string, tests []qa.TestCase) (map[stri
 	return imports, helpers
 }
 
+// receiverLike reports whether a variable plausibly holds an instance of
+// class: one name contains the other, ignoring case and underscores
+// (store ~ MemoryStore, handler ~ OrderHandler).
+func receiverLike(recv, class string) bool {
+	norm := func(s string) string { return strings.ToLower(strings.ReplaceAll(s, "_", "")) }
+	r, c := norm(recv), norm(class)
+	return len(r) > 2 && c != "" && (strings.Contains(c, r) || strings.Contains(r, c))
+}
+
 // constructorOf returns the constructor of a class symbol: a method named
-// constructor, __init__ or after the class (Java, C#, Kotlin, Dart).
+// constructor, __init__, initialize (Ruby) or after the class (Java, C#,
+// Kotlin, Dart).
 func constructorOf(ix *analysis.Index, class *analysis.Symbol) []string {
 	if class.Kind != analysis.KindClass {
 		return nil
 	}
 	var out []string
 	for _, id := range class.Methods {
-		if m := ix.Symbols[id]; m != nil && (m.Name == "constructor" || m.Name == "__init__" || m.Name == class.Name) {
+		if m := ix.Symbols[id]; m != nil && (m.Name == "constructor" || m.Name == "__init__" || m.Name == "initialize" || m.Name == class.Name) {
 			out = append(out, id)
 		}
 	}
@@ -1023,7 +1061,8 @@ func pickTargets(testFile string, c qa.Call, cands []*analysis.Symbol, imports m
 	}
 	if c.Qual != "" {
 		if got := filter(func(s *analysis.Symbol) bool {
-			return path.Base(path.Dir(s.File)) == c.Qual || path.Base(s.Package) == c.Qual || s.Receiver == c.Qual
+			return path.Base(path.Dir(s.File)) == c.Qual || path.Base(s.Package) == c.Qual || s.Receiver == c.Qual ||
+				s.Kind == analysis.KindMethod && receiverLike(c.Qual, s.Receiver)
 		}); len(got) > 0 && len(got) <= 3 {
 			return got
 		}

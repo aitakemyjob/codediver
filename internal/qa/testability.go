@@ -43,16 +43,16 @@ type hintRule struct {
 
 // hintRules detect hard-wired dependencies across common languages.
 var hintRules = []hintRule{
-	{HintClock, regexp.MustCompile(`\btime\.(?:Now|Since|Until)\(|\bDate\.now\(|\bnew Date\(\s*\)|\bdatetime\.(?:now|utcnow|today)\(|\bdate\.today\(|\btime\.time\(|System\.currentTimeMillis|Instant\.now\(|LocalDate(?:Time)?\.now\(|DateTime\.(?:Now|UtcNow)\b|Utc::now\(|SystemTime::now\(`),
+	{HintClock, regexp.MustCompile(`\btime\.(?:Now|Since|Until)\(|\bDate\.now\(|\bnew Date\(\s*\)|\bdatetime\.(?:now|utcnow|today)\(|\bdate\.today\(|\btime\.time\(|System\.currentTimeMillis|Instant\.now\(|LocalDate(?:Time)?\.now\(|DateTime\.(?:Now|UtcNow)\b|Utc::now\(|SystemTime::now\(|\bTime\.now\b|\bDate\.today\b|\bDateTime\.now\b`),
 		"reads the system clock directly, so results depend on when the test runs",
 		"accept the current time (or a clock interface / now func) as a parameter or field"},
 	{HintRandom, regexp.MustCompile(`\brand\.\w+\(|\bMath\.random\(|\brandom\.\w+\(|\buuid\.(?:New|uuid4)|\bcrypto\.randomUUID\(|new Random\(|\bthread_rng\(`),
 		"uses randomness directly, so outputs are not reproducible",
 		"inject the random source or ID generator so tests can supply a fixed one"},
-	{HintEnv, regexp.MustCompile(`\bos\.(?:Getenv|LookupEnv)\(|\bprocess\.env\b|\bos\.environ\b|\bos\.getenv\(|System\.getenv\(|Environment\.GetEnvironmentVariable\(|\benv::var\(`),
+	{HintEnv, regexp.MustCompile(`\bos\.(?:Getenv|LookupEnv)\(|\bprocess\.env\b|\bos\.environ\b|\bos\.getenv\(|System\.getenv\(|Environment\.GetEnvironmentVariable\(|\benv::var\(|\bENV\[|\bENV\.fetch\(`),
 		"reads environment variables inside the logic",
 		"read configuration once at startup and pass the values in"},
-	{HintNetwork, regexp.MustCompile(`\bhttp\.(?:Get|Post|Head|PostForm|DefaultClient)\b|\bnet\.Dial|\bfetch\(|\baxios[.(]|\brequests\.(?:get|post|put|delete|patch|request)\(|\burllib\.request|\bnew HttpClient\(|\bHttpClient\.newHttpClient\(|\breqwest::|\bsmtplib\.SMTP|\bsmtp\.(?:SendMail|Dial)\(|\bsocket\.(?:socket|create_connection)\(|\bhttpx\.\w+\(|\baiohttp\.|\bnew WebSocket\(|\bXMLHttpRequest\b`),
+	{HintNetwork, regexp.MustCompile(`\bhttp\.(?:Get|Post|Head|PostForm|DefaultClient)\b|\bnet\.Dial|\bfetch\(|\baxios[.(]|\brequests\.(?:get|post|put|delete|patch|request)\(|\burllib\.request|\bnew HttpClient\(|\bHttpClient\.newHttpClient\(|\breqwest::|\bsmtplib\.SMTP|\bsmtp\.(?:SendMail|Dial)\(|\bsocket\.(?:socket|create_connection)\(|\bhttpx\.\w+\(|\baiohttp\.|\bnew WebSocket\(|\bXMLHttpRequest\b|\bTcpStream::connect|\bUdpSocket::bind|\bHttpClient\b|\.(?:PostAsJson|PutAsJson|PatchAsJson|GetFromJson|GetString|GetByteArray|GetStream)Async\(|\bNet::HTTP\b|\bFaraday\.|\bHTTParty\.`),
 		"talks to the network directly",
 		"depend on an interface (or pass the client/base URL in) so tests can use a fake or a local test server"},
 	{HintFilesystem, regexp.MustCompile(`\bos\.(?:ReadFile|WriteFile|Open|OpenFile|Create|Remove|RemoveAll|MkdirAll|ReadDir|Stat)\(|\bioutil\.\w+\(|\bfs\.(?:readFileSync|writeFileSync|readFile|writeFile|existsSync|mkdirSync|readdirSync)\(|\bopen\([^)]*['"][rwa]b?['"]|\bFiles\.(?:read|write|newBuffered)\w*\(|\bFile\.(?:ReadAll|WriteAll)\w*\(|\bstd::fs::`),
@@ -121,8 +121,10 @@ type Call struct {
 }
 
 var (
-	callRe = regexp.MustCompile(`(?:\b([A-Za-z_$][\w$]*)\s*\??\.\s*)?\b([A-Za-z_$][\w$]*)\s*(?:<[^<>()]*>|\[[^\[\]()]*\])?\s*\(`)
+	callRe = regexp.MustCompile(`(?:\b([A-Za-z_$][\w$]*)\s*(?:\??\.|::)\s*)?\b([A-Za-z_$][\w$]*)\s*(?:<[^<>()]*>|\[[^\[\]()]*\])?\s*\(`)
 	newRe  = regexp.MustCompile(`\bnew\s+([A-Z][\w$]*)`)
+	// rubyNewRe matches Ruby's Foo.new, the constructor call.
+	rubyNewRe = regexp.MustCompile(`\b([A-Z]\w*)\.new\b`)
 	// JSX elements render components: <Menu ...> exercises Menu.
 	jsxRe = regexp.MustCompile(`<([A-Z][\w$]*)(?:[\s/>]|$)`)
 	// Language keywords and assertion/test-framework names that are never
@@ -154,7 +156,8 @@ func Calls(src, lang string) []Call {
 	seen := map[Call]bool{}
 	var out []Call
 	addCall := func(c Call) {
-		if notTargets[c.Name] || testReceivers[c.Qual] || seen[c] {
+		// Store::new() is Rust's constructor, not the keyword.
+		if notTargets[c.Name] && (c.Name != "new" || c.Qual == "") || testReceivers[c.Qual] || seen[c] {
 			return
 		}
 		seen[c] = true
@@ -166,6 +169,10 @@ func Calls(src, lang string) []Call {
 			addCall(Call{Qual: m[1], Name: m[2]})
 		}
 		for _, m := range newRe.FindAllStringSubmatch(code, -1) {
+			addCall(Call{Name: m[1]})
+		}
+		// Ruby constructs with Foo.new / Ns::Foo.new.
+		for _, m := range rubyNewRe.FindAllStringSubmatch(code, -1) {
 			addCall(Call{Name: m[1]})
 		}
 		for _, m := range jsxRe.FindAllStringSubmatch(code, -1) {

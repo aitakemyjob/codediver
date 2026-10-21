@@ -997,6 +997,11 @@ func pickTarget(from *Symbol, recv string, cands []*Symbol, file string) *Symbol
 	if len(cands) == 0 {
 		return nil
 	}
+	// Methods of built-in types (int.Parse, Math.max, String.valueOf)
+	// are never the repository's code.
+	if builtinTypes[recv] {
+		return nil
+	}
 	if recv == "this" || recv == "self" {
 		for _, c := range cands {
 			if c.Parent != "" && c.Parent == from.Parent {
@@ -1043,6 +1048,20 @@ func pickTarget(from *Symbol, recv string, cands []*Symbol, file string) *Symbol
 		}
 	}
 	return nil
+}
+
+// builtinTypes are standard type and namespace names whose static
+// methods share names with repository code (Parse, max, valueOf).
+var builtinTypes = map[string]bool{}
+
+// init fills builtinTypes.
+func init() {
+	for _, t := range strings.Fields(`int long short byte sbyte uint ulong ushort float double decimal bool char string object
+		Integer Long Short Byte Float Double Boolean Character String Object Math Arrays Collections Objects Optional
+		Convert Guid DateTime TimeSpan Enum Console Environment Path File Directory Task Enumerable
+		JSON Number Array Promise Date Reflect Symbol BigInt i32 i64 u32 u64 usize f64 str Vec HashMap`) {
+		builtinTypes[t] = true
+	}
 }
 
 // builtinMethods are method names common on built-in dicts, lists, maps,
