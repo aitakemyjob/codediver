@@ -58,7 +58,9 @@ results compare side by side:
 
 ## Support matrix
 
-What CodeDiver finds in these examples today (pinned by the tests):
+What CodeDiver finds in these examples today (pinned by the tests). For
+every language and the known gaps, see
+[Language support](../../docs/LANGUAGES.md).
 
 | | Go | TypeScript / React | Python | Java |
 |---|---|---|---|---|

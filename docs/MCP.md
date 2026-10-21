@@ -9,6 +9,9 @@ or `file:line`.
 Graph and analysis tools accept `show: true` to put the result on the
 developer's screen.
 
+How precise each result is depends on the language: see
+[Language support](LANGUAGES.md).
+
 ## Context & exploration
 
 | Tool | Purpose |
@@ -27,9 +30,9 @@ developer's screen.
 
 | Tool | Purpose |
 |---|---|
-| `get_call_graph` | Callees, callers or both to a depth; optional external calls and function references (`ref`). |
-| `trace_to` | Every caller path from entry points to a function ("how is this triggered?"). |
-| `get_function_flow` | Control-flow graph with inputs/outputs (precise for Go). |
+| `get_call_graph` | Callees, callers or both to a depth; optional external calls and function references (`ref`). Type-checked for Go; name-matched (`~`) elsewhere, with a precision note. |
+| `trace_to` | Every caller path from entry points to a function ("how is this triggered?"). Outside Go, an entry is a caller with no caller found. |
+| `get_function_flow` | Control-flow graph with inputs/outputs. Go only; other languages get the signature and one body block. |
 | `get_dependencies` | Package/directory dependency graph, optionally focused on one package. |
 | `get_types` | Structs/classes/interfaces with fields, methods and `implements` edges. |
 | `git_status` | Branch and changed files. |
