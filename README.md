@@ -53,6 +53,8 @@ heatmaps of churn, complexity and change.
 | **Lexical** | TypeScript, JavaScript, Python, Rust, Java, Kotlin, C#, C, C++, Ruby, PHP, Swift, Scala, Dart, Lua | Functions, classes, parameters, docs and complexity; name-matched call edges (marked `~`); import graphs for most. |
 | **Everywhere** | ~80 languages | Syntax highlighting, search, git history and diffs, heatmaps, proposals, walkthroughs and agent explanations. |
 
+Lexical results are approximate: a `~` call may point at a same-named function, and calls through callbacks or framework wiring are missed. [Language support](docs/LANGUAGES.md) has the full matrix and the known gaps per language.
+
 ## Install
 
 **macOS / Linux**
@@ -200,6 +202,7 @@ reports to [SECURITY.md](SECURITY.md).
 
 - [Architecture](docs/ARCHITECTURE.md) — packages, design principles, how to extend
 - [MCP tool reference](docs/MCP.md) — every tool agents can call
+- [Language support](docs/LANGUAGES.md) — what each analyzer can and can't do, per language
 - [Contributing](CONTRIBUTING.md) — setup, conventions, branding and releases
 - [Roadmap](ROADMAP.md) — what's planned for 0.2, 0.3, 0.4 and 1.0
 - [Changelog](CHANGELOG.md) — notable changes per release

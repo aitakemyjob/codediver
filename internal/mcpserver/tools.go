@@ -517,7 +517,7 @@ func (s *Server) register() {
 			return sb.String(), nil
 		})
 
-	addTool(s, &mcp.Tool{Name: "get_call_graph", Description: "Call graph around a function: what it calls (callees), what calls it (callers), or both. Go is analyzed precisely with type information, including interface dispatch; other languages use name-matching heuristics (marked ~).", Annotations: readOnly("Call graph")},
+	addTool(s, &mcp.Tool{Name: "get_call_graph", Description: "Call graph around a function: what it calls (callees), what calls it (callers), or both. Go is type-checked, including interface dispatch; other languages match calls by name (marked ~), so a same-named function may be the real target and callers can be missing. Per-language gaps: docs/LANGUAGES.md.", Annotations: readOnly("Call graph")},
 		func(a callGraphArgs) string { return a.Symbol + " " + a.Direction }, func(ctx context.Context, a callGraphArgs) (string, error) {
 			rt, err := c.AgentRepo(a.Repo)
 			if err != nil {
@@ -533,7 +533,7 @@ func (s *Server) register() {
 			return renderGraph(g), nil
 		})
 
-	addTool(s, &mcp.Tool{Name: "trace_to", Description: "How does execution reach this function? Walks callers back to entry points and returns every path. Great for 'how is this triggered' questions.", Annotations: readOnly("Trace to function")},
+	addTool(s, &mcp.Tool{Name: "trace_to", Description: "How does execution reach this function? Walks callers back to entry points and returns every path. Great for 'how is this triggered' questions. Exact for Go; elsewhere edges are name matches (~) and an entry point is any caller with no caller found, such as a framework handler.", Annotations: readOnly("Trace to function")},
 		func(a traceArgs) string { return a.Symbol }, func(ctx context.Context, a traceArgs) (string, error) {
 			rt, err := c.AgentRepo(a.Repo)
 			if err != nil {
@@ -549,7 +549,7 @@ func (s *Server) register() {
 			return renderGraph(g), nil
 		})
 
-	addTool(s, &mcp.Tool{Name: "get_function_flow", Description: "Control-flow graph of a function (branches, loops, switch cases, early returns, defers, goroutines, panics) plus its inputs and outputs. Precise for Go.", Annotations: readOnly("Function flow")},
+	addTool(s, &mcp.Tool{Name: "get_function_flow", Description: "Control-flow graph of a function (branches, loops, switch cases, early returns, defers, goroutines, panics) plus its inputs and outputs. Go only: other languages return the signature and a single body block, so read the code instead.", Annotations: readOnly("Function flow")},
 		func(a flowArgs) string { return a.Symbol }, func(ctx context.Context, a flowArgs) (string, error) {
 			rt, err := c.AgentRepo(a.Repo)
 			if err != nil {
@@ -570,7 +570,7 @@ func (s *Server) register() {
 			return out, nil
 		})
 
-	addTool(s, &mcp.Tool{Name: "get_dependencies", Description: "Package/module dependency graph (Go packages, or directories for other languages).", Annotations: readOnly("Dependencies")},
+	addTool(s, &mcp.Tool{Name: "get_dependencies", Description: "Package/module dependency graph: Go packages and modules; directories for other languages, from relative imports (path aliases and dynamic imports aren't resolved).", Annotations: readOnly("Dependencies")},
 		func(a depsArgs) string { return a.Focus }, func(ctx context.Context, a depsArgs) (string, error) {
 			rt, err := c.AgentRepo(a.Repo)
 			if err != nil {

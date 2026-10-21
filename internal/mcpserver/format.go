@@ -132,7 +132,28 @@ func renderGraph(g *analysis.Graph) string {
 	if g.Note != "" {
 		sb.WriteString("\n" + g.Note + "\n")
 	}
+	sb.WriteString(precisionNote(g))
 	return sb.String()
+}
+
+// languagesDoc documents per-language analysis precision and known gaps.
+const languagesDoc = "https://github.com/aitakemyjob/codediver/blob/main/docs/LANGUAGES.md"
+
+// precisionNote says how far to trust a graph with name-matched (~) edges,
+// so agents treat it as approximate; "" when every edge is type-checked.
+func precisionNote(g *analysis.Graph) string {
+	lexical := false
+	for _, e := range g.Edges {
+		lexical = lexical || e.Heuristic
+	}
+	if !lexical {
+		return ""
+	}
+	note := "\nPrecision: ~ edges are lexical name matches, not type-checked: a same-named function may be the real target, and calls through values, aliases or framework wiring are missed, so callers may be incomplete."
+	if g.Kind == "trace" {
+		note += " An {entry} badge means no caller was found, not necessarily a real entry point."
+	}
+	return note + " Known gaps per language: " + languagesDoc + "\n"
 }
 
 // renderFlow describes a control-flow graph: signature, inputs, outputs

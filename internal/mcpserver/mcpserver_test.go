@@ -135,7 +135,12 @@ func TestExploreTools(t *testing.T) {
 		"callees", "validate", "source:", "w http.ResponseWriter")
 	h.mustCall("get_call_graph", map[string]any{"symbol": "Handler.CreateOrder", "depth": 3},
 		"Store.Save", "Memory.Save", "dispatch")
-	h.mustCall("trace_to", map[string]any{"symbol": "Memory.Save"}, "Handler.CreateOrder", "main", "entry")
+	// Type-checked Go needs no caveat; name-matched TypeScript says how far to trust it.
+	if out := h.mustCall("trace_to", map[string]any{"symbol": "Memory.Save"}, "Handler.CreateOrder", "main", "entry"); strings.Contains(out, "Precision:") {
+		t.Errorf("Go trace has a precision note:\n%s", out)
+	}
+	h.mustCall("trace_to", map[string]any{"symbol": "post"}, "submit", "~", "Precision: ~ edges are lexical name matches",
+		"{entry} badge means no caller was found", "docs/LANGUAGES.md")
 	h.mustCall("get_function_flow", map[string]any{"symbol": "Handler.CreateOrder"}, "inputs:  w http.ResponseWriter", "[cond", "[return")
 	h.mustCall("get_dependencies", map[string]any{}, "example.com/shop/api", "→")
 	h.mustCall("get_types", map[string]any{"scope": "example.com/shop/store"}, "Memory", "implements")
