@@ -43,6 +43,9 @@ type langSpec struct {
 	lineCmt     []string
 	blockCmt    [2]string
 	strDelims   string
+	// exprBody marks languages where `= expr` after a signature is the
+	// body (Kotlin, Scala: `fun f(x: Int) = x + 1`).
+	exprBody bool
 	// interp marks `${…}` in backtick strings as code (template literals).
 	interp     bool
 	extensions []string // used when resolving extension-less imports
@@ -79,16 +82,16 @@ var specs = map[string]*langSpec{
 		strDelims:  `"`,
 		extensions: []string{".rs", "/mod.rs"},
 	},
-	"java":   jvmSpec(`^\s*(?:@\w+\s+)*(?:(?:public|private|protected|static|final|abstract|synchronized|native|default)\s+)*(?:<[^>]+>\s+)?[\w<>\[\],.?]+\s+([a-zA-Z_]\w*)\s*\(([^)]*)\)?\s*(?:throws\s+[\w., ]+)?\s*\{?\s*$`, ".java"),
-	"csharp": jvmSpec(`^\s*(?:\[[^\]]*\]\s*)*(?:(?:public|private|protected|internal|static|virtual|override|abstract|async|sealed|extern|unsafe|new|partial)\s+)*[\w<>\[\],.?]+\s+([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(([^)]*)\)?\s*(?:where\s+.*)?\s*\{?\s*$`, ".cs"),
+	"java":   jvmSpec(`^\s*(?:@\w+\s+)*(?:(?:public|private|protected|static|final|abstract|synchronized|native|default)\s+)*(?:<[^>]+>\s+)?[\w<>\[\],.?]+\s+([a-zA-Z_]\w*)\s*\(([^)]*)\)?\s*(?:throws\s+[\w., ]+)?\s*(?:\{.*)?$`, ".java"),
+	"csharp": jvmSpec(`^\s*(?:\[[^\]]*\]\s*)*(?:(?:public|private|protected|internal|static|virtual|override|abstract|async|sealed|extern|unsafe|new|partial)\s+)*[\w<>\[\],.?]+\s+([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(([^)]*)\)?\s*(?:where\s+[^{=]*)?\s*(?:\{.*|=>.*)?$`, ".cs"),
 	"kotlin": {
 		defs: []defPattern{
 			{re: rx(`^\s*(?:(?:public|private|internal|protected|open|abstract|sealed|data|enum|inner|annotation)\s+)*(?:class|object)\s+([A-Za-z_]\w*)`), kind: KindClass, name: 1},
 			{re: rx(`^\s*(?:(?:public|private|internal|protected|sealed|fun)\s+)*interface\s+([A-Za-z_]\w*)`), kind: KindInterface, name: 1},
 			{re: rx(`^\s*(?:(?:public|private|internal|protected|open|override|suspend|inline|operator|infix|tailrec|abstract)\s+)*fun\s+(?:<[^>]*>\s*)?(?:[\w.<>]+\.)?([A-Za-z_]\w*)\s*\(([^)]*)`), kind: KindFunc, name: 1, params: 2},
 		},
-		imports: []*regexp.Regexp{rx(`^\s*import\s+([\w.]+)`)},
-		block:   "brace", lineCmt: []string{"//"}, blockCmt: [2]string{"/*", "*/"}, strDelims: `"'`,
+		imports:  []*regexp.Regexp{rx(`^\s*import\s+([\w.]+)`)},
+		exprBody: true, block: "brace", lineCmt: []string{"//"}, blockCmt: [2]string{"/*", "*/"}, strDelims: `"'`,
 		extensions: []string{".kt"},
 	},
 	"swift": {
@@ -104,11 +107,11 @@ var specs = map[string]*langSpec{
 			{re: rx(`^\s*(?:(?:case|abstract|final|sealed|private|protected|implicit)\s+)*(?:class|object|trait)\s+([A-Za-z_]\w*)`), kind: KindClass, name: 1},
 			{re: rx(`^\s*(?:(?:override|private|protected|final|implicit)\s+)*def\s+([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*\(?([^)]*)`), kind: KindFunc, name: 1, params: 2},
 		},
-		imports: []*regexp.Regexp{rx(`^\s*import\s+([\w.]+)`)},
-		block:   "brace", lineCmt: []string{"//"}, blockCmt: [2]string{"/*", "*/"}, strDelims: `"`,
+		imports:  []*regexp.Regexp{rx(`^\s*import\s+([\w.]+)`)},
+		exprBody: true, block: "brace", lineCmt: []string{"//"}, blockCmt: [2]string{"/*", "*/"}, strDelims: `"`,
 		extensions: []string{".scala"},
 	},
-	"dart": jvmSpec(`^\s*(?:(?:static|final|const|external|Future<[^>]*>|async)\s+)*[\w<>\[\],.?]+\s+([a-zA-Z_]\w*)\s*\(([^)]*)\)?\s*(?:async\s*)?\{?\s*$`, ".dart"),
+	"dart": jvmSpec(`^\s*(?:(?:static|final|const|external|Future<[^>]*>|async)\s+)*[\w<>\[\],.?]+\s+([a-zA-Z_]\w*)\s*\(([^)]*)\)?\s*(?:async\s*)?(?:\{.*|=>.*)?$`, ".dart"),
 	"c":    cSpec(),
 	"cpp":  cSpec(),
 	"ruby": {
@@ -385,7 +388,7 @@ func blockEnd(lines []string, idx int, sp *langSpec) int {
 		}
 		return idx + 1
 	default:
-		return braceEnd(lines, idx)
+		return braceEnd(lines, idx, sp.exprBody)
 	}
 }
 
@@ -396,7 +399,7 @@ func blockEnd(lines []string, idx int, sp *langSpec) int {
 // function whose body is an expression (`=> (<div>…</div>)`, `=> x + 1`)
 // ends where that expression closes. Lines are masked, so strings and
 // comments don't count.
-func braceEnd(lines []string, idx int) int {
+func braceEnd(lines []string, idx int, exprBody bool) int {
 	parens, braces, brackets, types := 0, 0, 0, 0
 	opened, arrow, expr := false, false, false
 	prev := byte(0) // last non-space character
@@ -445,6 +448,9 @@ func braceEnd(lines []string, idx int) int {
 				if k+1 < len(line) && line[k+1] == '>' && parens == 0 && !opened && !expr {
 					arrow = true
 					k++
+				} else if exprBody && parens == 0 && brackets == 0 && types == 0 && !opened && !expr && !arrow && (k+1 >= len(line) || line[k+1] != '=') {
+					// `fun f() = expr`: like an arrow, the next token decides.
+					arrow = true
 				}
 			case ';':
 				if !opened && !expr && parens == 0 && braces == 0 && types == 0 {
@@ -670,7 +676,8 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 				}
 				for _, m := range callRe.FindAllStringSubmatch(text, -1) {
 					recv, name := m[1], m[2]
-					if keywords[name] {
+					// Keywords aren't calls, except as methods: Store::new().
+					if keywords[name] && (recv == "" || !definable[name]) {
 						continue
 					}
 					var target *Symbol
@@ -694,6 +701,12 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 						}
 						for _, cand := range byName["__init__"] {
 							if cand.Parent == target.ID {
+								to = cand.ID
+							}
+						}
+						// Java, C#, Kotlin, Dart: constructors share the class's name.
+						for _, cand := range byName[target.Name] {
+							if cand.Kind == KindMethod && cand.Parent == target.ID {
 								to = cand.ID
 							}
 						}
@@ -783,7 +796,7 @@ func parseDefs(gf *genericFile, sp *langSpec) {
 			// C-family method heuristic must not fire on calls / control flow.
 			trimmed := strings.TrimSpace(line)
 			if d.kind == KindMethod || (d.kind == KindFunc && (gf.lang == "c" || gf.lang == "cpp")) {
-				if strings.HasSuffix(trimmed, ";") || strings.HasPrefix(trimmed, "return") || strings.HasPrefix(trimmed, "else") || insideFunc {
+				if strings.HasSuffix(trimmed, ";") && !strings.Contains(trimmed, "=>") || strings.HasPrefix(trimmed, "return") || strings.HasPrefix(trimmed, "else") || insideFunc {
 					continue
 				}
 				if (gf.lang == "c" || gf.lang == "cpp") && indentOf(gf.lines[i]) > 0 && container == nil {
