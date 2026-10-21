@@ -10,6 +10,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/aitakemyjob/codediver/internal/analysis"
 	"github.com/aitakemyjob/codediver/internal/config"
 	"github.com/aitakemyjob/codediver/internal/core"
 	"github.com/aitakemyjob/codediver/internal/events"
@@ -138,6 +139,14 @@ func TestExploreTools(t *testing.T) {
 	// Type-checked Go needs no caveat; name-matched TypeScript says how far to trust it.
 	if out := h.mustCall("trace_to", map[string]any{"symbol": "Memory.Save"}, "Handler.CreateOrder", "main", "entry"); strings.Contains(out, "Precision:") {
 		t.Errorf("Go trace has a precision note:\n%s", out)
+	}
+	if out := h.mustCall("get_dependencies", map[string]any{}, "api → store"); strings.Contains(out, "Precision:") {
+		t.Errorf("Go dependencies have a precision note:\n%s", out)
+	}
+	// Lexical import edges get a note about imports, not about calls.
+	deps := &analysis.Graph{Kind: "deps", Edges: []analysis.GraphEdge{{From: "dir:a", To: "dir:b", Heuristic: true}}}
+	if n := precisionNote(deps); !strings.Contains(n, "edges come from import statements") || strings.Contains(n, "same-named function") {
+		t.Errorf("deps note = %q", n)
 	}
 	h.mustCall("trace_to", map[string]any{"symbol": "post"}, "submit", "~", "Precision: ~ edges are lexical name matches",
 		"{entry} badge means no caller was found", "Known gaps: get_language_support language=typescript.")
