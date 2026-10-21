@@ -147,6 +147,9 @@ func precisionNote(g *analysis.Graph) string {
 		return ""
 	}
 	note := "\nPrecision: ~ edges are lexical name matches, not type-checked: a same-named function may be the real target, and calls through values, aliases or framework wiring are missed, so callers may be incomplete."
+	if g.Kind == "deps" {
+		note = "\nPrecision: ~ edges come from import statements resolved to files in the repository; path aliases, workspace packages and dynamic imports aren't followed, so some dependencies may be missing."
+	}
 	if g.Kind == "trace" {
 		note += " An {entry} badge means no caller was found, not necessarily a real entry point."
 	}

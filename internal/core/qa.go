@@ -847,9 +847,12 @@ func (s *Service) qaAnalyze(ctx context.Context, rt *RepoHandle) (*qaAnalysis, e
 				}
 			}
 			for _, sym := range pickTargets(tc.File, c, cands, importsOf[tc.File]) {
-				if !seen[sym.ID] {
-					seen[sym.ID] = true
-					tc.Targets = append(tc.Targets, sym.ID)
+				// Constructing a class (new Cart(), Store()) runs its constructor.
+				for _, id := range append([]string{sym.ID}, constructorOf(ix, sym)...) {
+					if !seen[id] {
+						seen[id] = true
+						tc.Targets = append(tc.Targets, id)
+					}
 				}
 			}
 		}
@@ -985,6 +988,21 @@ func testFileContext(file string, lines []string, tests []qa.TestCase) (map[stri
 		helpers[m[1]] = strings.Join(lines[i:min(end, len(lines))], "\n")
 	}
 	return imports, helpers
+}
+
+// constructorOf returns the constructor of a class symbol: a method named
+// constructor, __init__ or after the class (Java, C#, Kotlin, Dart).
+func constructorOf(ix *analysis.Index, class *analysis.Symbol) []string {
+	if class.Kind != analysis.KindClass {
+		return nil
+	}
+	var out []string
+	for _, id := range class.Methods {
+		if m := ix.Symbols[id]; m != nil && (m.Name == "constructor" || m.Name == "__init__" || m.Name == class.Name) {
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 // pickTargets chooses which same-named symbols a call in a test refers
