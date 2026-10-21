@@ -390,10 +390,26 @@ expect(render(new Menu())).toBe(true)
 assert.Equal(t, 1, pkg.Count[int](xs))
 render(<Inspector open />)
 const el = (<Toolbar
-  open />)`)
+  open />)`, "typescript")
 	want := []Call{{"", "NewStore"}, {"s", "AddRepo"}, {"", "Menu"}, {"pkg", "Count"}, {"", "Inspector"}, {"", "Toolbar"}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Calls = %v", got)
+	}
+
+	// Calls inside strings and comments are not calls (#19); template
+	// literal interpolations are.
+	cases := []struct {
+		lang, src string
+		want      []Call
+	}{
+		{"go", "parse(\"NewStore(path)\", `s.AddRepo(dir)`) // Drop(x)\n/* Skip() */ check(1)", []Call{{"", "parse"}, {"", "check"}}},
+		{"typescript", "expect(`total ${sum(xs)} of fake()`).toBe('Other()')", []Call{{"", "sum"}}},
+		{"python", "assert run('''\nhelper()\n''') == \"Thing()\"  # ignore()", []Call{{"", "run"}}},
+	}
+	for _, c := range cases {
+		if got := Calls(c.src, c.lang); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s Calls = %v, want %v", c.lang, got, c.want)
+		}
 	}
 }
 

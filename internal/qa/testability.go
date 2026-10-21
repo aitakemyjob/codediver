@@ -4,6 +4,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/aitakemyjob/codediver/internal/analysis"
 )
 
 // Hint is a static observation about why a function is hard to test, with
@@ -145,9 +147,10 @@ func setOf(words string) map[string]bool {
 	return m
 }
 
-// Calls extracts the distinct calls made in source text, ignoring test
-// framework helpers and language keywords.
-func Calls(src string) []Call {
+// Calls extracts the distinct calls made in source text in lang, ignoring
+// comments, string contents, test framework helpers and language keywords.
+func Calls(src, lang string) []Call {
+	src = analysis.MaskCode(src, lang)
 	seen := map[Call]bool{}
 	var out []Call
 	addCall := func(c Call) {

@@ -829,15 +829,16 @@ func (s *Service) qaAnalyze(ctx context.Context, rt *RepoHandle) (*qaAnalysis, e
 			importsOf[tc.File], helpersOf[tc.File] = testFileContext(tc.File, lines, a.tests)
 		}
 		body := strings.Join(lines[tc.Line-1:min(tc.EndLine, len(lines))], "\n")
-		calls := qa.Calls(body)
+		lang := workspace.Language(tc.File)
+		calls := qa.Calls(body, lang)
 		// Follow helpers defined in the test file one level deep.
 		for _, c := range calls {
 			if hb, ok := helpersOf[tc.File][c.Name]; ok && c.Qual == "" {
-				calls = append(calls, qa.Calls(hb)...)
+				calls = append(calls, qa.Calls(hb, lang)...)
 			}
 		}
 		seen := map[string]bool{}
-		family := langFamily(workspace.Language(tc.File))
+		family := langFamily(lang)
 		for _, c := range calls {
 			var cands []*analysis.Symbol
 			for _, sym := range byName[c.Name] {
