@@ -264,3 +264,27 @@ func TestImpactStatus(t *testing.T) {
 		t.Errorf("stale = %+v", n)
 	}
 }
+
+func TestChangedTypeHasNoTestStatus(t *testing.T) {
+	s, rt, _ := qaRepo(t)
+	ctx := context.Background()
+	p, err := s.Propose(ctx, rt, "Rename field", "", []proposals.ChangeInput{{
+		Path:  "api/api.go",
+		Edits: []proposals.Edit{{Old: "\tstore store.Store\n", New: "\tstore  store.Store\n\tstrict bool\n"}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := s.ChangeReport(ctx, rt, ChangeRef{Proposal: p.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Tests run code, not types: the struct is changed, but neither tested
+	// nor untested.
+	if len(r.Impact.Changed) != 1 || r.Impact.Changed[0].Kind != "struct" {
+		t.Fatalf("changed = %+v", r.Impact.Changed)
+	}
+	if n := r.Impact.Changed[0]; n.Status != "" || n.Review || len(r.Coverage.Untested) != 0 {
+		t.Errorf("struct = %+v, untested = %+v", n, r.Coverage.Untested)
+	}
+}

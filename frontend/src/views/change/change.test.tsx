@@ -61,6 +61,8 @@ describe('change helpers', () => {
     expect(testStatus(create)).toBe('Tests run its call toward the change (TestCreate) · measured · 82.0% covered · 2 calling · 0 reaching tests');
     expect(testStatus(save)).toBe('Tests run it, but not its call toward the change · measured · 60.0% covered · 1 calling · 0 reaching tests');
     expect(testStatus(main)).toBe('No coverage, and no test calls it · estimated');
+    // Types have no test status.
+    expect(testStatus(node({ name: 'ImpactNode', kind: 'struct', status: undefined }))).toBe('A struct: tests run code, not types');
     const g = packageGraph(impact);
     expect(g.nodes.find((n) => n.id === 'api')).toMatchObject({ root: true, sublabel: 'changed' });
     expect(g.nodes.find((n) => n.id === 'cmd/shop')?.sublabel).toBe('2 calls away');
@@ -108,6 +110,13 @@ describe('ImpactPanel', () => {
     expect(screen.getByText('2 call paths continue past three calls.')).toBeInTheDocument();
     fireEvent.click(screen.getByText('Batch.Save'));
     expect(actions.code).toHaveBeenCalledWith('api/batch.go', 5);
+  });
+
+  it('leaves a changed type out of the test verdict', () => {
+    const struct = node({ id: 'n', name: 'ImpactNode', kind: 'struct', status: undefined });
+    render(<ImpactPanel impact={{ ...impact, changed: [struct] }} />);
+    expect(screen.getByText('ImpactNode')).toBeInTheDocument();
+    expect(screen.queryByText(/· (unknown|not run)/)).toBeNull();
   });
 
   it('says when the change only adds code', () => {
