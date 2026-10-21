@@ -286,6 +286,21 @@ func maskSource(src string, sp *langSpec) string {
 		}
 		c := b[i]
 		if strings.IndexByte(sp.strDelims, c) >= 0 {
+			// In Python f-strings, {…} fields are code; {{ and }} are text.
+			fstr := sp.block == "indent" && fStringPrefix(src, i)
+			field := func(j int) (int, bool) {
+				if !fstr || (b[j] != '{' && b[j] != '}') {
+					return j, false
+				}
+				if j+1 < n && b[j+1] == b[j] {
+					b[j], b[j+1] = ' ', ' '
+					return j + 2, true
+				}
+				if b[j] == '{' {
+					return fieldEnd(b, j) + 1, true
+				}
+				return j, false
+			}
 			// Python triple-quoted strings.
 			if sp.block == "indent" && strings.HasPrefix(src[i:], strings.Repeat(string(c), 3)) {
 				q := strings.Repeat(string(c), 3)
@@ -294,10 +309,15 @@ func maskSource(src string, sp *langSpec) string {
 				if end >= 0 {
 					stop = i + 3 + end + 3
 				}
-				for j := i + 3; j < stop-3 && j < n; j++ {
+				for j := i + 3; j < stop-3 && j < n; {
+					if next, ok := field(j); ok {
+						j = next
+						continue
+					}
 					if b[j] != '\n' {
 						b[j] = ' '
 					}
+					j++
 				}
 				i = stop
 				continue
@@ -306,17 +326,11 @@ func maskSource(src string, sp *langSpec) string {
 			for j < n && b[j] != c {
 				// Template literal interpolations (`${total(o)}`) are code.
 				if c == '`' && sp.interp && b[j] == '$' && j+1 < n && b[j+1] == '{' {
-					depth := 0
-					for j++; j < n; j++ {
-						if b[j] == '{' {
-							depth++
-						} else if b[j] == '}' {
-							if depth--; depth == 0 {
-								break
-							}
-						}
-					}
-					j++
+					j = fieldEnd(b, j+1) + 1
+					continue
+				}
+				if next, ok := field(j); ok {
+					j = next
 					continue
 				}
 				if b[j] == '\\' {
@@ -342,6 +356,39 @@ func maskSource(src string, sp *langSpec) string {
 		i++
 	}
 	return string(b)
+}
+
+// fStringPrefix reports whether the string opening at i is a Python
+// f-string: its prefix (up to two of r, b, u, f) includes f.
+func fStringPrefix(src string, i int) bool {
+	f := false
+	k := i - 1
+	for ; k >= 0 && k >= i-2 && strings.IndexByte("rRbBuUfF", src[k]) >= 0; k-- {
+		f = f || src[k] == 'f' || src[k] == 'F'
+	}
+	return f && (k < 0 || !isIdentByte(src[k]))
+}
+
+// isIdentByte reports whether c can be part of an identifier.
+func isIdentByte(c byte) bool {
+	return c == '_' || c == '$' || c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+}
+
+// fieldEnd returns the index of the brace closing the one at open
+// (nested braces count), or the last index when it never closes.
+func fieldEnd(b []byte, open int) int {
+	depth := 0
+	for j := open; j < len(b); j++ {
+		switch b[j] {
+		case '{':
+			depth++
+		case '}':
+			if depth--; depth == 0 {
+				return j
+			}
+		}
+	}
+	return len(b) - 1
 }
 
 // indentOf returns the indentation width of line (tabs count as 4), or -1

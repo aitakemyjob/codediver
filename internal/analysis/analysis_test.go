@@ -422,6 +422,34 @@ func TestMaskSource(t *testing.T) {
 	}
 }
 
+// Python f-string replacement fields are code; their text and {{ }} are
+// not (#64).
+func TestMaskPythonFStrings(t *testing.T) {
+	py := specs["python"]
+	cases := []struct{ src, keep, drop string }{
+		{`msg = f"total {fmt(o)} of fake()"`, "fmt(o)", "fake("},
+		{`msg = F'{a(1)}{b(2)}'`, "b(2)", ""},
+		{`msg = rf"{{literal()}} {real(x)}"`, "real(x)", "literal("},
+		{"msg = f\"\"\"\n  {total(o)}\n  fake()\n\"\"\"", "total(o)", "fake("},
+		{`plain = "not {code(x)}"`, "", "code("},
+		{`call(f"{nested({'k': 1})}")`, "nested({", ""},
+	}
+	for _, c := range cases {
+		got := maskSource(c.src, py)
+		if c.keep != "" && !strings.Contains(got, c.keep) || c.drop != "" && strings.Contains(got, c.drop) {
+			t.Errorf("%q masked = %q", c.src, got)
+		}
+		if strings.Count(got, "\n") != strings.Count(c.src, "\n") {
+			t.Errorf("%q: newlines must be preserved", c.src)
+		}
+	}
+	// A call only inside an f-string is still an edge.
+	root, files := writeTree(t, map[string]string{"app.py": "def fmt(x):\n    return x\n\ndef show(o):\n    return f\"total: {fmt(o)}\"\n"})
+	if ix := Build(root, files, testLang); !hasEdge(ix, "h:app.py#show", "h:app.py#fmt", EdgeCall) {
+		t.Errorf("show should call fmt: %+v", ix.Callees("h:app.py#show"))
+	}
+}
+
 func TestResolveImport(t *testing.T) {
 	files := map[string]bool{"src/db.ts": true, "src/lib/index.ts": true, "pkg/mod.py": true, "pkg/sub/__init__.py": true}
 	cases := []struct{ from, spec, lang, want string }{
