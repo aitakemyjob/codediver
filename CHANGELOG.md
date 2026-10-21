@@ -43,6 +43,19 @@ every merged pull request.
   graph of hundreds of nodes.
 
 ### Fixed
+- **Blast radius test status** (#57): callers showed as tested when a
+  test merely could reach them on paper, or when any of their lines ran.
+  Each caller now says whether tests run its call toward the change
+  (*runs the path*), run it but not that call (*call not run*), never run
+  it (*not run*), or, without coverage, whether a test calls it directly
+  (*likely tested*, estimated). Measured coverage always decides over the
+  static estimate, per-test runs name the tests, coverage older than the
+  file is marked stale, and rings count callers by status. Direct callers
+  whose call into the change no test runs are flagged for review, in the
+  app and in the agent's `get_tests_for_change` text.
+- The test-to-code mapping ignored nothing inside strings and comments,
+  so a test with source code as a fixture "called" what that code called
+  (#19).
 - Jest manual mocks (files under `__mocks__/`) count as test files, not as
   untested code.
 - Coverage below 0.05% shows as `<0.1%` instead of a misleading `0.0%`.

@@ -193,6 +193,53 @@ func plural(n int, noun string) string {
 	return fmt.Sprintf("%d %ss", n, noun)
 }
 
+// statusOrder lists test statuses weakest first, with how they read.
+var statusOrder = []struct{ status, label string }{
+	{core.StatusNotRun, "not run"},
+	{core.StatusCaller, "run but not the call toward the change"},
+	{core.StatusUnknown, "unknown"},
+	{core.StatusLikely, "likely tested (estimated)"},
+	{core.StatusPath, "tests run the path"},
+}
+
+// statusCounts summarizes a ring's callers by test status.
+func statusCounts(counts map[string]int) string {
+	var parts []string
+	for _, s := range statusOrder {
+		if n := counts[s.status]; n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", n, s.label))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+// statusText says how far tests reach a caller, and how that is known.
+func statusText(n core.ImpactNode) string {
+	var t string
+	switch n.Status {
+	case core.StatusPath:
+		t = "tests run this call"
+		if len(n.Tests) > 0 {
+			t += " (" + strings.Join(n.Tests, ", ") + ")"
+		}
+	case core.StatusCaller:
+		t = "runs, but no test runs this call"
+	case core.StatusNotRun:
+		t = "no test runs it"
+	case core.StatusLikely:
+		t = "likely tested: a test calls it (not measured)"
+	default:
+		t = "unknown: no coverage and no test calls it"
+	}
+	if n.Pct >= 0 {
+		t += ", " + pct(n.Pct) + " covered"
+	}
+	if n.Stale {
+		t += ", coverage older than the file"
+	}
+	return t
+}
+
 // writeImpact describes a blast radius closest first: direct callers by
 // name, further rings as counts, then where the change surfaces.
 func writeImpact(sb *strings.Builder, im *core.Impact) {
@@ -211,17 +258,17 @@ func writeImpact(sb *strings.Builder, im *core.Impact) {
 			continue
 		}
 		fmt.Fprintf(sb, "Direct callers (most likely to break)")
-		if im.Tests {
-			fmt.Fprintf(sb, ", %d of %d tested", r.Tested, r.Total)
+		if im.Tests || im.Coverage {
+			fmt.Fprintf(sb, "; %s", statusCounts(r.Statuses))
 		}
 		sb.WriteString(":\n")
 		for _, n := range r.Nodes[:min(len(r.Nodes), 25)] {
 			fmt.Fprintf(sb, "- %s  %s:%d → %s", n.Name, n.File, n.Line, n.Via)
-			switch {
-			case n.Review:
-				sb.WriteString("  UNTESTED")
-			case n.Pct >= 0:
-				fmt.Fprintf(sb, "  %s covered", pct(n.Pct))
+			if im.Tests || im.Coverage {
+				fmt.Fprintf(sb, "  %s", statusText(n))
+			}
+			if n.Review {
+				sb.WriteString("  REVIEW")
 			}
 			sb.WriteString("\n")
 		}
@@ -237,7 +284,11 @@ func writeImpact(sb *strings.Builder, im *core.Impact) {
 		for _, p := range r.Packages[:min(len(r.Packages), 6)] {
 			pk = append(pk, fmt.Sprintf("%s %d", p.Path, p.Count))
 		}
-		fmt.Fprintf(sb, "%d calls away: %s (%s)\n", r.Depth, plural(r.Total, "caller"), strings.Join(pk, ", "))
+		fmt.Fprintf(sb, "%d calls away: %s (%s)", r.Depth, plural(r.Total, "caller"), strings.Join(pk, ", "))
+		if im.Tests || im.Coverage {
+			fmt.Fprintf(sb, "; %s", statusCounts(r.Statuses))
+		}
+		sb.WriteString("\n")
 	}
 	if len(im.Entries) > 0 {
 		var es []string

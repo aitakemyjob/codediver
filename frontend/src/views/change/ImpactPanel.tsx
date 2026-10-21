@@ -2,11 +2,11 @@ import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, CircleAlert, List, LogIn, Network } from 'lucide-react';
 import { actions } from '../../lib/actions';
 import { basename } from '../../lib/format';
-import type { Impact, ImpactNode, ImpactRing } from '../../lib/types';
+import type { Impact, ImpactNode, ImpactRing, TestStatus } from '../../lib/types';
 import { GraphCanvas } from '../../graph/GraphCanvas';
 import { Empty } from '../../components/ui';
 import { CoverageBar } from '../qa/qa';
-import { nodesById, packageGraph, pathToChange, testStatus } from './change';
+import { nodesById, packageGraph, pathToChange, statusInfo, statusOrder, testStatus } from './change';
 
 const ringTitle: Record<number, string> = { 1: 'Direct callers', 2: 'Two calls away', 3: 'Three calls away' };
 const ringNote: Record<number, string> = {
@@ -27,6 +27,7 @@ export function ImpactPanel({ impact }: { impact: Impact }) {
   const graph = useMemo(() => (view === 'graph' ? packageGraph(impact) : undefined), [impact, view]);
   const sum = impact.summary;
   const total = sum.callers.reduce((a, b) => a + b, 0);
+  const judged = impact.tests || impact.coverage;
 
   if (impact.changed.length === 0) {
     return <Empty icon={<Network size={28} />} title="No existing code changes">The change only adds new code.</Empty>;
@@ -35,7 +36,7 @@ export function ImpactPanel({ impact }: { impact: Impact }) {
     <div className="impact">
       <div className="impact-strip">
         <Tile n={sum.changed} label={`changed function${sum.changed === 1 ? '' : 's'}`} />
-        <Tile n={sum.callers[0]} label="direct callers" sub={impact.tests && sum.callers[0] ? (sum.untested ? `${sum.untested} untested` : 'all tested') : undefined} warn={sum.untested > 0} />
+        <Tile n={sum.callers[0]} label="direct callers" sub={judged && sum.callers[0] ? (sum.untested ? `${sum.untested} to review` : 'tests run all') : undefined} warn={sum.untested > 0} />
         <Tile n={sum.callers[1] + sum.callers[2]} label="further out" sub={`${sum.callers[1]} · ${sum.callers[2]} by hop`} />
         <Tile n={sum.files} label="files" sub={`${sum.packages} packages`} />
         <Tile n={sum.entries} label="entry points reached" />
@@ -56,7 +57,7 @@ export function ImpactPanel({ impact }: { impact: Impact }) {
             <div className="row" style={{ flexWrap: 'wrap', gap: 6, padding: '0 8px 6px' }}>
               {impact.changed.map((n) => (
                 <span key={n.id} className="sym-chip" onClick={() => actions.code(n.file, n.line)} title={`${n.file}:${n.line} · ${testStatus(n)}`}>
-                  {n.name} {impact.tests && !n.tested && <span className="del">· untested</span>}
+                  {n.name} {judged && !n.tested && <span className="del">· {statusInfo[n.status]?.label ?? 'untested'}</span>}
                 </span>
               ))}
             </div>
@@ -108,7 +109,7 @@ function Ring({ ring, impact, byId }: { ring: ImpactRing; impact: Impact; byId: 
         <b>{ringTitle[ring.depth]}</b> <span className="mono">{ring.total}</span>
         <span className="faint">{ringNote[ring.depth]}</span>
         <div className="grow" />
-        {impact.tests && <span className="faint">{ring.tested} of {ring.total} tested</span>}
+        {(impact.tests || impact.coverage) && <StatusCounts counts={ring.statuses} />}
         {ring.avgPct >= 0 && <CoverageBar pct={ring.avgPct} width={60} />}
       </div>
       {!open && (
@@ -125,6 +126,20 @@ function Ring({ ring, impact, byId }: { ring: ImpactRing; impact: Impact; byId: 
   );
 }
 
+/** A ring's callers by test status, weakest first: "2 not run · 5 run the path". */
+function StatusCounts({ counts }: { counts: Partial<Record<TestStatus, number>> }) {
+  const shown = statusOrder.filter((s) => (counts?.[s] ?? 0) > 0);
+  return (
+    <span className="row" style={{ gap: 8, fontSize: 11.5 }}>
+      {shown.map((s) => (
+        <span key={s} style={{ color: statusInfo[s].tone }} title={statusInfo[s].long}>
+          <span className="mono">{counts[s]}</span> {statusInfo[s].label}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function CallerRow({ n, impact, byId }: { n: ImpactNode; impact: Impact; byId: Map<string, ImpactNode> }) {
   const path = pathToChange(n, byId);
   return (
@@ -137,9 +152,11 @@ function CallerRow({ n, impact, byId }: { n: ImpactNode; impact: Impact; byId: M
       <span className="faint ellipsis" style={{ width: 160, textAlign: 'right' }}>{basename(n.file)}:{n.line}</span>
       {impact.tests || impact.coverage ? (
         <>
-          <span style={{ width: 130, textAlign: 'right' }} className={n.tested ? 'faint' : 'del'}>
+          <span style={{ width: 150, textAlign: 'right', color: statusInfo[n.status]?.tone }} title={testStatus(n)}>
             {n.review && <CircleAlert size={12} style={{ verticalAlign: -2, marginRight: 4 }} />}
-            {n.tested ? `${n.direct ? `${n.direct} direct` : ''}${n.direct && n.indirect ? ' · ' : ''}${n.indirect ? `${n.indirect} indirect` : ''}` || 'covered' : 'untested'}
+            {statusInfo[n.status]?.label ?? 'unknown'}
+            {!n.measured && n.status !== 'unknown' && <span className="faint"> (est.)</span>}
+            {n.stale && <span className="faint" title="coverage is older than the file"> (stale)</span>}
           </span>
           <span style={{ width: 110 }}><CoverageBar pct={n.pct} width={50} /></span>
         </>
