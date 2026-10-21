@@ -13,3 +13,12 @@ export async function createOrder(o: Order): Promise<string> {
   const body = (await res.json()) as { id: string };
   return body.id;
 }
+
+/** The orders endpoints, grouped for the cart page. */
+export const ordersApi = {
+  create(o: Order) { return createOrder(o) },
+  list: async (): Promise<Order[]> => {
+    const res = await fetch('/orders');
+    return (await res.json()) as Order[];
+  },
+};

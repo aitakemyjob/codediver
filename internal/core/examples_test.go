@@ -83,16 +83,26 @@ var examples = []exampleCase{
 		validate: "Validate", file: "order/order.go", edit: proposals.Edit{Old: "if o.Qty > 1000 {", New: "if o.Qty > 500 {"}, caller: "Handler.CreateOrder", callerStatus: StatusCaller,
 	},
 	{
-		name: "ts-react", framework: "vitest", tests: 3, covFiles: 6,
+		name: "ts-react", framework: "vitest", tests: 5, covFiles: 8,
 		funcs: map[string]fnExpect{
 			"validate":    {cover: "partial", tested: true, callers: 1}, // from OrderForm's submit
-			"total":       {cover: "full", tested: true, callers: 1},    // inside OrderSummary's JSX
-			"formatCents": {cover: "full", tested: true, callers: 1},    // reached through the OrderSummary test
+			"total":       {cover: "full", tested: true, callers: 2},    // inside OrderSummary's JSX, and Cart.subtotal
+			"formatCents": {cover: "full", tested: true, callers: 2},    // OrderSummary and summarize
 			"unitPrice":   {cover: "full", tested: true, callers: 1},
 			"legacyTotal": {cover: "partial", callers: 0}, // the declaration line runs on import
 			// Components rendered only through JSX in App.
 			"OrderSummary": {cover: "full", tested: true, callers: 1},
 			"OrderForm":    {cover: "0", callers: 1},
+			// The cart: a constructor, one-line methods, a class field
+			// holding an arrow, super and ?. calls.
+			"Cart.constructor":  {cover: "full", tested: true, callers: 1}, // new Cart() in a test and in CartPage
+			"Cart.reset":        {cover: "full", tested: true, callers: 2}, // through the constructor
+			"Cart.clear":        {cover: "partial", callers: 0},            // only passed to onClick
+			"GiftCart.subtotal": {cover: "full", tested: true, callers: 0},
+			"Cart.subtotal":     {cover: "full", tested: true, callers: 2}, // super.subtotal() and cart?.subtotal()
+			// An object literal's methods and an anonymous default export.
+			"ordersApi.create": {cover: "0", callers: 0},
+			"default":          {cover: "0", callers: 0},
 		},
 		hardToTest: "createOrder", hints: []string{"network", "clock"},
 		validate: "validate", file: "src/order.ts", edit: proposals.Edit{Old: "if (o.qty > 1000)", New: "if (o.qty > 500)"}, caller: "submit", callerStatus: StatusNotRun,
@@ -293,6 +303,46 @@ func TestExampleMonorepo(t *testing.T) {
 	}
 	if got := strings.Join(hints["fetchInvoices"], ","); !strings.Contains(got, "network") {
 		t.Errorf("fetchInvoices hints = %v", got)
+	}
+}
+
+// TestExampleTypeScriptConstructs pins the TypeScript shapes the cart
+// code uses (#61, #62): each must produce its call edge.
+func TestExampleTypeScriptConstructs(t *testing.T) {
+	s, rt := openExample(t, "ts-react")
+	ix, err := s.Index(context.Background(), rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := func(file, name string) string { return "h:src/" + file + "#" + name }
+	cart, page, api := "cart/cart.ts", "pages/CartPage.tsx", "api.ts"
+	for _, e := range [][2]string{
+		{id(cart, "Cart.constructor"), id(cart, "Cart.reset")},              // one-line constructor body
+		{id(cart, "Cart.add"), id(cart, "Cart.count")},                      // one-line method
+		{id(cart, "Cart.clear"), id(cart, "Cart.reset")},                    // class field holding an arrow
+		{id(cart, "GiftCart.subtotal"), id(cart, "Cart.subtotal")},          // super.subtotal()
+		{id(cart, "summarize"), id(cart, "Cart.subtotal")},                  // cart?.subtotal()
+		{id(api, "ordersApi.create"), id(api, "createOrder")},               // object-literal method
+		{id("pages/CartPage.tsx", "default"), id(cart, "Cart.constructor")}, // anonymous default export; new Cart()
+	} {
+		found := false
+		for _, c := range ix.Callees(e[0]) {
+			found = found || c.To == e[1]
+		}
+		if !found {
+			t.Errorf("%s should call %s: %+v", e[0], e[1], ix.Callees(e[0]))
+		}
+	}
+	if s := ix.Symbols[id(page, "default")]; s == nil || s.Kind != "func" {
+		t.Errorf("CartPage default export = %+v", s)
+	}
+	// cart.ts imports '../order' over several lines.
+	found := false
+	for _, e := range ix.PkgEdges {
+		found = found || e.From == "dir:src/cart" && e.To == "dir:src"
+	}
+	if !found {
+		t.Errorf("multi-line import missing: %+v", ix.PkgEdges)
 	}
 }
 

@@ -71,6 +71,11 @@ every language and the known gaps, see
 | JSX use (`<OrderSummary />`) as a call | n/a | ✓ (`component={Foo}` and `memo(Foo)` as references) | n/a | n/a |
 | Calls inside components with destructured props | n/a | ✓ | n/a | n/a |
 | Calls inside template literals (`` `${f(x)}` ``) | n/a | ✓ | n/a | n/a |
+| Constructors (`new Cart()` → `Cart.constructor`, also from tests) | n/a | ✓ | n/a | ✓ (constructors named after the class) |
+| Methods on one line, class fields holding arrows (`clear = () => …`) | n/a | ✓ | n/a | ✓ (one-line methods) |
+| Object-literal methods (`ordersApi.create`) and anonymous default exports (`default`) | n/a | ✓ | n/a | n/a |
+| `super.subtotal()` and `cart?.subtotal()` | n/a | ✓ (`super` goes to the `extends` class) | n/a | n/a |
+| Multi-line `import {…} from` as a dependency | n/a | ✓ | n/a | n/a |
 | Calls from module-level code (`render(<App />)` in `main.tsx`) | n/a | ✗: not inside a function, so `App` has no caller | ✗ | n/a |
 | Same method name on unrelated types | ✓ type-aware | built-in names (`get`, `push`…) only link when the receiver looks like the class | same as TypeScript (`store.get` → `MemoryStore.get`, not `data.get`) | name matching |
 | Coverage import | ✓ coverprofile | ✓ LCOV | ✓ LCOV | ✓ JaCoCo |
