@@ -33,6 +33,14 @@ func testLang(p string) string {
 		return "typescript"
 	case ".py":
 		return "python"
+	case ".java":
+		return "java"
+	case ".cs":
+		return "csharp"
+	case ".kt":
+		return "kotlin"
+	case ".rs":
+		return "rust"
 	case ".mod":
 		return "go.mod"
 	}
@@ -746,5 +754,105 @@ export {
 	}
 	if !deps["dir:src/app → dir:src/lib"] || !deps["dir:src/app → dir:src"] {
 		t.Errorf("multi-line import and re-export should be dependencies: %v", deps)
+	}
+}
+
+// One-line and expression-bodied methods in Java, C#, Kotlin and Rust's
+// fn new (#63).
+func TestGenericOneLineMethods(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"Store.java": `public class Store {
+    public Store() {}
+
+    public static Store create() { return new Store(); }
+
+    public void save(Order o) { validate(o); }
+
+    private void validate(Order o) {}
+
+    private void log() {
+        audit();
+    }
+
+    void audit() {}
+}
+`,
+		"Store.cs": `public class Store
+{
+    public void Save(Order o) => Validate(o);
+
+    private void Validate(Order o) => Check(o);
+
+    private void Check(Order o)
+    {
+    }
+}
+`,
+		"Store.kt": `class Store {
+    fun save(o: Order) {
+        validate(o)
+    }
+    fun validate(o: Order) = check(o)
+    private fun check(o: Order): Boolean {
+        return true
+    }
+    fun total(xs: List<Int>, start: Int = 0) =
+        xs.sum() + start
+    fun after() = check(Order())
+}
+`,
+		"src/store.rs": `pub struct Store {}
+
+impl Store {
+    pub fn new() -> Self {
+        Store::init()
+    }
+    fn init() -> Self { Store {} }
+}
+
+pub fn run() {
+    let s = Store::new();
+}
+`,
+	})
+	ix := Build(root, files, testLang)
+	syms := map[string][2]int{ // id → lines
+		"h:Store.java#Store.save":     {6, 6},
+		"h:Store.java#Store.validate": {8, 8},
+		"h:Store.java#Store.log":      {10, 12},
+		"h:Store.cs#Store.Save":       {3, 3},
+		"h:Store.cs#Store.Validate":   {5, 5},
+		"h:Store.cs#Store.Check":      {7, 9},
+		"h:Store.kt#Store.validate":   {5, 5},
+		"h:Store.kt#Store.check":      {6, 8},
+		"h:Store.kt#Store.total":      {9, 10},
+		"h:Store.kt#Store.after":      {11, 11},
+		"h:src/store.rs#Store.new":    {4, 6},
+	}
+	for id, lines := range syms {
+		s := ix.Symbols[id]
+		if s == nil || s.Line != lines[0] || s.EndLine != lines[1] {
+			t.Errorf("%s = %+v, want lines %d-%d", id, s, lines[0], lines[1])
+		}
+	}
+	edges := [][2]string{
+		{"h:Store.java#Store.save", "h:Store.java#Store.validate"},
+		// new Store() reaches the constructor named after the class.
+		{"h:Store.java#Store.create", "h:Store.java#Store.Store"},
+		{"h:Store.java#Store.log", "h:Store.java#Store.audit"},
+		{"h:Store.cs#Store.Save", "h:Store.cs#Store.Validate"},
+		{"h:Store.cs#Store.Validate", "h:Store.cs#Store.Check"},
+		{"h:Store.kt#Store.validate", "h:Store.kt#Store.check"},
+		{"h:src/store.rs#Store.new", "h:src/store.rs#Store.init"},
+		{"h:src/store.rs#run", "h:src/store.rs#Store.new"},
+	}
+	for _, e := range edges {
+		if !hasEdge(ix, e[0], e[1], EdgeCall) {
+			t.Errorf("%s should call %s: %+v", e[0], e[1], ix.Callees(e[0]))
+		}
+	}
+	// check's lines belong to check, not to the expression-bodied validate.
+	if hasEdge(ix, "h:Store.kt#Store.total", "h:Store.kt#Store.check", EdgeCall) {
+		t.Error("total's extent ran into the next function")
 	}
 }
