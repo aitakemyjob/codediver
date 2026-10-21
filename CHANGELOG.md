@@ -73,6 +73,10 @@ every merged pull request.
   - **Tests that construct a class** (`new Cart()`, `Store()`) now count
     as running its constructor (`constructor`, `__init__` or a method
     named after the class), and through it what the constructor calls.
+- A coverage run that fails because the project's JavaScript dependencies
+  aren't installed ("Cannot find package 'vitest'") now says to run
+  `npm install` in the suite's folder instead of only reporting that no
+  coverage report was written.
 - **Blast radius test status** (#57): callers showed as tested when a
   test merely could reach them on paper, or when any of their lines ran.
   Each caller now says whether tests run its call toward the change

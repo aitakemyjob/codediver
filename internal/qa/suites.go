@@ -212,6 +212,7 @@ var setupHints = []struct {
 	{regexp.MustCompile("no such command: `?llvm-cov"), "install cargo-llvm-cov: cargo install cargo-llvm-cov"},
 	{regexp.MustCompile(`Task 'jacocoTestReport' not found`), "apply the Gradle jacoco plugin (plugins { jacoco }) so jacocoTestReport exists"},
 	{regexp.MustCompile(`Cannot find module 'jest'|jest: not found`), "Jest is not installed: npm install -D jest"},
+	{regexp.MustCompile(`Cannot find (?:package|module) '(?:vitest|@vitest/|jest|ts-jest)`), "the project's dependencies aren't installed: run npm install (or pnpm/yarn install) in the suite's folder"},
 	{regexp.MustCompile(`(?i)(command not found|is not recognized as an internal or external command|executable file not found)`), "the test tool isn't on PATH for CodeDiver; use its full path in the suite command"},
 }
 

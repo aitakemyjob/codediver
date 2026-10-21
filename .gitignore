@@ -6,6 +6,11 @@
 /frontend/node_modules/
 /frontend/*.tsbuildinfo
 
+# example projects' installed dependencies and HTML coverage reports
+/testdata/examples/**/node_modules/
+/testdata/examples/**/coverage/lcov-report/
+/testdata/examples/**/package-lock.json
+
 # Wails-generated platform files (regenerated from build/appicon.png)
 /build/darwin/
 /build/windows/
