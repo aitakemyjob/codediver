@@ -517,7 +517,7 @@ func (s *Server) register() {
 			return sb.String(), nil
 		})
 
-	addTool(s, &mcp.Tool{Name: "get_call_graph", Description: "Call graph around a function: what it calls (callees), what calls it (callers), or both. Go is type-checked, including interface dispatch; other languages match calls by name (marked ~), so a same-named function may be the real target and callers can be missing. Per-language gaps: docs/LANGUAGES.md.", Annotations: readOnly("Call graph")},
+	addTool(s, &mcp.Tool{Name: "get_call_graph", Description: "Call graph around a function: what it calls (callees), what calls it (callers), or both. Go is type-checked, including interface dispatch; other languages match calls by name (marked ~), so a same-named function may be the real target and callers can be missing; get_language_support lists the gaps per language.", Annotations: readOnly("Call graph")},
 		func(a callGraphArgs) string { return a.Symbol + " " + a.Direction }, func(ctx context.Context, a callGraphArgs) (string, error) {
 			rt, err := c.AgentRepo(a.Repo)
 			if err != nil {

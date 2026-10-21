@@ -140,7 +140,7 @@ func TestExploreTools(t *testing.T) {
 		t.Errorf("Go trace has a precision note:\n%s", out)
 	}
 	h.mustCall("trace_to", map[string]any{"symbol": "post"}, "submit", "~", "Precision: ~ edges are lexical name matches",
-		"{entry} badge means no caller was found", "docs/LANGUAGES.md")
+		"{entry} badge means no caller was found", "Known gaps: get_language_support language=typescript.")
 	h.mustCall("get_function_flow", map[string]any{"symbol": "Handler.CreateOrder"}, "inputs:  w http.ResponseWriter", "[cond", "[return")
 	h.mustCall("get_dependencies", map[string]any{}, "example.com/shop/api", "→")
 	h.mustCall("get_types", map[string]any{"scope": "example.com/shop/store"}, "Memory", "implements")

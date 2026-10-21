@@ -23,6 +23,8 @@ Use it to help the developer understand and change code VISUALLY:
 - Explore with repo_overview, list_files, read_file, search_code, search_symbols, get_symbol.
 - Analyze with get_call_graph, trace_to (how execution reaches a function), get_function_flow (control flow),
   get_dependencies, git_diff and get_heatmap. Pass show=true to put the result on the developer's screen.
+  Go is type-checked; other languages match calls by name (marked ~). get_language_support says how far to
+  trust a result for a language and lists its known gaps.
 - Teach with start_walkthrough (step-by-step code tour), explain_function (inputs, outputs and logic of a
   function, rendered next to its control-flow graph), show_diagram (mermaid or nodes/edges) and annotate_code.
 - Test with get_test_overview, get_coverage, get_tests_for and find_test_gaps (coverage, behaviors, untested
@@ -62,6 +64,7 @@ func New(c *core.Service) *Server {
 	s.register()
 	s.registerQA()
 	s.registerChange()
+	s.registerDocs()
 	return s
 }
 
