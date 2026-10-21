@@ -70,6 +70,9 @@ every merged pull request.
     - Rust `fn new()` and `Store::new()` calls are found
   - **Python** (#64): calls inside f-strings are found, in call graphs
     and in the test-to-code mapping.
+  - **Tests that construct a class** (`new Cart()`, `Store()`) now count
+    as running its constructor (`constructor`, `__init__` or a method
+    named after the class), and through it what the constructor calls.
 - **Blast radius test status** (#57): callers showed as tested when a
   test merely could reach them on paper, or when any of their lines ran.
   Each caller now says whether tests run its call toward the change
