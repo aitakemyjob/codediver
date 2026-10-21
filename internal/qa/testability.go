@@ -121,7 +121,7 @@ type Call struct {
 }
 
 var (
-	callRe = regexp.MustCompile(`(?:\b([A-Za-z_$][\w$]*)\s*\.\s*)?\b([A-Za-z_$][\w$]*)\s*(?:<[^<>()]*>|\[[^\[\]()]*\])?\s*\(`)
+	callRe = regexp.MustCompile(`(?:\b([A-Za-z_$][\w$]*)\s*\??\.\s*)?\b([A-Za-z_$][\w$]*)\s*(?:<[^<>()]*>|\[[^\[\]()]*\])?\s*\(`)
 	newRe  = regexp.MustCompile(`\bnew\s+([A-Z][\w$]*)`)
 	// JSX elements render components: <Menu ...> exercises Menu.
 	jsxRe = regexp.MustCompile(`<([A-Z][\w$]*)(?:[\s/>]|$)`)
