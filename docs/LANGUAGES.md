@@ -73,7 +73,8 @@ It **does not** guarantee that:
 
 **Control flow (—)** is only built for Go. For other languages, the Logic
 view and `get_function_flow` show the signature and one body block; ask your
-agent to explain the function (`explain_function`) instead.
+agent to explain the function (`explain_function`) instead. TypeScript and
+Python control flow are planned ([#71], [#72], [#73]).
 
 **Complexity** outside Go counts branch keywords and `&&`, `||` and `?`, so
 treat it as an estimate.
@@ -88,10 +89,9 @@ much of this matrix in tests.
 
 ## Known limitations
 
-Each item says whether a fix is planned:
-- **[#59]:** small fixes to the lexical patterns, planned for 0.2.0
-- **[#18]:** needs a real parser or import-aware resolution
-- **inherent:** a limit of how the analysis works
+Each item links the issue that plans its fix, or says *inherent* when it's
+a limit of how the analysis works. Small fixes to the lexical patterns are
+tracked in [#59] (planned for 0.2.0), deeper analysis in [#18].
 
 ### Go
 
@@ -101,13 +101,13 @@ Each item says whether a fix is planned:
   standard library isn't analyzed*
 - **Generic interfaces:** these get no `dispatch` edges. With
   `var r Repo[int] = intRepo{}` and `r.Get()`, the trace stops at
-  `Repo.Get`. *[#18]*
+  `Repo.Get`. *[#74]*
 - **Package initializers:** `var x = compute()` gives `compute` no caller.
-  *[#18]*
+  *[#69]*
 - **Closures:** calls inside a closure count for the enclosing function, as
   plain calls. `go func() { f() }()` records a call to `f`, not a `go`
   edge.
-- **In the control-flow view:**
+- **In the control-flow view** *[#74]*:
   - closures are opaque blocks
   - `goto` ends at a jump node without an edge to its label
   - `t.Fatal` and similar test helpers aren't drawn as exits (`panic`,
@@ -121,77 +121,77 @@ Definitions that aren't found, so their calls and callers are lost:
 
 ```ts
 class SqlStore {
-  constructor(db: Db) { this.init() }    // constructor isn't a symbol [#59]
-  save(o: Order) { return this.write(o) } // method with its body on the signature line [#59]
-  onClick = () => { this.save(o) }        // class field holding an arrow function [#59]
+  constructor(db: Db) { this.init() }    // constructor isn't a symbol [#61]
+  save(o: Order) { return this.write(o) } // method with its body on the signature line [#61]
+  onClick = () => { this.save(o) }        // class field holding an arrow function [#61]
 }
 
 export default {
-  async fetch(req, env) { return route(req) } // object-literal method: Workers, Durable Objects [#59]
+  async fetch(req, env) { return route(req) } // object-literal method: Workers, Durable Objects [#61]
 }
 
-export default function () { setup() }   // anonymous default export [#59]
+export default function () { setup() }   // anonymous default export [#61]
 ```
 
 Edges that are wrong or missing:
 - `cache.save()` links to the first class with a `save` method, which may be
-  the wrong class. *[#18]*
-- `obj?.helper()` links to a free function called `helper`. *[#59]*
-- `super.handle()` links to the calling class's own `handle`. *[#59]*
+  the wrong class. *[#67]*
+- `obj?.helper()` links to a free function called `helper`. *[#62]*
+- `super.handle()` links to the calling class's own `handle`. *[#62]*
 - Functions passed as values get no edge: `items.map(format)`,
   `promise.then(render)`, `emitter.on('done', notify)`. React components
-  passed as props are an exception. *[#18]*
+  passed as props are an exception. *[#68]*
 - **Imports that rename:** aliased imports (`import { a as b }`) and
-  namespace imports (`ns.fn()`) only resolve by the called name. *[#18]*
+  namespace imports (`ns.fn()`) only resolve by the called name. *[#65]*
 - **Module-level code:** calls outside any function, like `render(<App />)`
-  in `main.tsx`, have no caller, so `App` looks uncalled. *[#18]*
+  in `main.tsx`, have no caller, so `App` looks uncalled. *[#69]*
 - **Framework wiring:** decorators like `@Get()` read as calls to a symbol
   named `Get`. Framework entry points (route handlers, Workers, Durable
-  Object methods) show no callers. *inherent*
+  Object methods) show no callers. *[#75]*
 
 Dependencies:
-- A multi-line `import { a,\n b } from './x'` is missed. *[#59]*
+- A multi-line `import { a,\n b } from './x'` is missed. *[#62]*
 - Path aliases (`@/lib/x`, tsconfig `paths`) and workspace package names
-  aren't resolved. *[#18], [#7]*
-- Dynamic `import('./x')` is ignored. `require()` and `export … from`
-  re-exports are followed.
+  aren't resolved. *[#70]*
+- Dynamic `import('./x')` is ignored. *[#70]* `require()` and
+  `export … from` re-exports are followed.
 
 ### Python
 
 - **Same-named methods:** `store.save()` links to the first class with a
   `save` method; with both `Store.save` and `Cache.save`, it can pick
-  `Cache.save`. *[#18]*
+  `Cache.save`. *[#67]*
 - **Import aliases:** `from .store import Store as S` then `S()` doesn't
-  link to `Store`. *[#18]*
+  link to `Store`. *[#66]*
 - **f-strings:** calls inside them are lost with the string text
-  (`f"{fmt(o)}"`). *[#59]*
+  (`f"{fmt(o)}"`). *[#64]*
 - **Functions passed as values** get no edge: `sorted(xs, key=keyfn)`,
-  `map(fn, xs)`, callbacks. *[#18]*
+  `map(fn, xs)`, callbacks. *[#68]*
 - **Implicit calls:** `@property` reads and dunder methods (`__enter__`,
   operators) aren't calls. *inherent*
 - **Decorated entry points:** `@app.route`, fixtures and task decorators
-  show no callers. *inherent*
+  show no callers. *[#75]*
 
 ### Java, Kotlin, C# and Rust
 
 - **Java:** methods with an empty or single-line body
-  (`void validate(Order o) {}`) aren't symbols. *[#59]*
+  (`void validate(Order o) {}`) aren't symbols. *[#63]*
 - **Java and C#:** interface method declarations aren't symbols. A call
-  through an interface links by name to a class with that method. *[#18]*
-- **Java:** method references (`this::save`) get no edge. *[#18]*
+  through an interface links by name to a class with that method. *[#76]*
+- **Java:** method references (`this::save`) get no edge. *[#68]*
 - **C#:** expression-bodied methods
-  (`void Validate(Order o) => Check(o);`) aren't symbols. *[#59]*
+  (`void Validate(Order o) => Check(o);`) aren't symbols. *[#63]*
 - **Kotlin:** expression-bodied functions (`fun validate(o) = check(o)`)
-  are found, but their end runs into the next function. *[#59]*
+  are found, but their end runs into the next function. *[#63]*
 - **Rust:** `fn new()` isn't a symbol, so `Store::new()` has no target.
-  *[#59]*
-- **Rust:** `impl Trait for Type` isn't linked to the trait. *[#18]*
+  *[#63]*
+- **Rust:** `impl Trait for Type` isn't linked to the trait. *[#76]*
   Calls inside macros like `println!` are found.
 
 ### Ruby
 
 - Calls without parentheses (`write o`, `save!`) aren't found, and that's
-  how most Ruby is written. Expect sparse call graphs. *[#18]*
+  how most Ruby is written. Expect sparse call graphs. *[#76]*
 
 ## Trace view and `trace_to`
 
@@ -208,6 +208,21 @@ Dependencies:
   that a choice was made. Check `~` edges against the code before relying
   on a path.
 
-[#7]: https://github.com/aitakemyjob/codediver/issues/7
 [#18]: https://github.com/aitakemyjob/codediver/issues/18
 [#59]: https://github.com/aitakemyjob/codediver/issues/59
+[#61]: https://github.com/aitakemyjob/codediver/issues/61
+[#62]: https://github.com/aitakemyjob/codediver/issues/62
+[#63]: https://github.com/aitakemyjob/codediver/issues/63
+[#64]: https://github.com/aitakemyjob/codediver/issues/64
+[#65]: https://github.com/aitakemyjob/codediver/issues/65
+[#66]: https://github.com/aitakemyjob/codediver/issues/66
+[#67]: https://github.com/aitakemyjob/codediver/issues/67
+[#68]: https://github.com/aitakemyjob/codediver/issues/68
+[#69]: https://github.com/aitakemyjob/codediver/issues/69
+[#70]: https://github.com/aitakemyjob/codediver/issues/70
+[#71]: https://github.com/aitakemyjob/codediver/issues/71
+[#72]: https://github.com/aitakemyjob/codediver/issues/72
+[#73]: https://github.com/aitakemyjob/codediver/issues/73
+[#74]: https://github.com/aitakemyjob/codediver/issues/74
+[#75]: https://github.com/aitakemyjob/codediver/issues/75
+[#76]: https://github.com/aitakemyjob/codediver/issues/76

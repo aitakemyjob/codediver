@@ -136,9 +136,6 @@ func renderGraph(g *analysis.Graph) string {
 	return sb.String()
 }
 
-// languagesDoc documents per-language analysis precision and known gaps.
-const languagesDoc = "https://github.com/aitakemyjob/codediver/blob/main/docs/LANGUAGES.md"
-
 // precisionNote says how far to trust a graph with name-matched (~) edges,
 // so agents treat it as approximate; "" when every edge is type-checked.
 func precisionNote(g *analysis.Graph) string {
@@ -153,7 +150,16 @@ func precisionNote(g *analysis.Graph) string {
 	if g.Kind == "trace" {
 		note += " An {entry} badge means no caller was found, not necessarily a real entry point."
 	}
-	return note + " Known gaps per language: " + languagesDoc + "\n"
+	lang := ""
+	for _, n := range g.Nodes {
+		if n.Root && n.File != "" {
+			lang = workspace.Language(n.File)
+		}
+	}
+	if _, ok := languageNames[lang]; ok {
+		return note + fmt.Sprintf(" Known gaps: get_language_support language=%s.\n", lang)
+	}
+	return note + " Known gaps per language: get_language_support.\n"
 }
 
 // renderFlow describes a control-flow graph: signature, inputs, outputs

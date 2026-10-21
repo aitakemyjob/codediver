@@ -45,9 +45,12 @@ every merged pull request.
   lists, per language, how symbols, call graphs, traces, control flow,
   dependencies, tests and coverage are analyzed. It also covers what the
   `~` marker does and doesn't guarantee, and the known gaps with
-  examples. Agent tools say the same: graphs with name-matched edges end
-  with a precision note, and the tool descriptions no longer suggest
-  control flow or dependency resolution exists where it doesn't.
+  examples. Agents read the same page, as shipped in the build, with the
+  new `get_language_support` tool (one language or all) or the
+  `codediver://docs/languages` resource. Graphs with name-matched edges
+  end with a precision note pointing to it, and the tool descriptions no
+  longer suggest control flow or dependency resolution exists where it
+  doesn't.
 
 ### Fixed
 - **Blast radius test status** (#57): callers showed as tested when a
