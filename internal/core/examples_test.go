@@ -84,7 +84,7 @@ var examples = []exampleCase{
 		validate: "Validate", file: "order/order.go", edit: proposals.Edit{Old: "if o.Qty > 1000 {", New: "if o.Qty > 500 {"}, caller: "Handler.CreateOrder", callerStatus: StatusCaller,
 	},
 	{
-		name: "ts-react", framework: "vitest", tests: 5, covFiles: 14,
+		name: "ts-react", framework: "vitest", tests: 5, covFiles: 15,
 		funcs: map[string]fnExpect{
 			"validate":    {cover: "partial", tested: true, callers: 1}, // from OrderForm's submit
 			"total":       {cover: "full", tested: true, callers: 4},    // OrderSummary's JSX, Cart.subtotal, receipt's format, and grandTotal as orderTotal
@@ -431,9 +431,14 @@ func TestExampleTypeScriptImports(t *testing.T) {
 		return false
 	}
 	for _, e := range []struct{ from, to, how string }{
+		// Name matching happens to get these two right as well: the two
+		// formats are equally far from pages/, and grandTotal is unique.
 		{cartPage, id("cart/format.ts", "format"), "named import of one of two same-named functions"},
-		{receipt, id("receipt/format.ts", "format"), "namespace import, barrel rename (formatLine)"},
 		{receipt, id("receipt/totals.ts", "grandTotal"), "namespace import through export *"},
+		// These need the import: name matching picks the format beside
+		// cartLine, and finds nothing called formatLine, emit or orderTotal.
+		{id("receipt/summary.ts", "cartLine"), id("cart/format.ts", "format"), "named import, with the other format in the caller's own folder"},
+		{receipt, id("receipt/format.ts", "format"), "namespace import, barrel rename (formatLine)"},
 		{receipt, id("receipt/print.ts", "printReceipt"), "default import under another name (emit)"},
 		{id("receipt/totals.ts", "grandTotal"), id("order.ts", "total"), "aliased import (orderTotal)"},
 	} {
@@ -441,7 +446,7 @@ func TestExampleTypeScriptImports(t *testing.T) {
 			t.Errorf("%s: %s should call %s: %+v", e.how, e.from, e.to, ix.Callees(e.from))
 		}
 	}
-	if calls(cartPage, id("receipt/format.ts", "format")) || calls(receipt, id("cart/format.ts", "format")) {
+	if calls(cartPage, id("receipt/format.ts", "format")) || calls(receipt, id("cart/format.ts", "format")) || calls(id("receipt/summary.ts", "cartLine"), id("receipt/format.ts", "format")) {
 		t.Errorf("a call linked to the same-named format it doesn't import")
 	}
 }
