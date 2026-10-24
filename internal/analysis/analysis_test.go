@@ -995,15 +995,15 @@ function list() {}
 	}
 }
 
-func TestJSNameList(t *testing.T) {
-	got := jsNameList(" a, type B, c as d, default as e, , 1x as y ", " as ")
+func TestNameList(t *testing.T) {
+	got := nameList(" a, type B, c as d, default as e, , 1x as y ", " as ")
 	want := map[string]string{"a": "a", "B": "B", "c": "d", "default": "e"}
 	if len(got) != len(want) {
-		t.Fatalf("jsNameList = %v", got)
+		t.Fatalf("nameList = %v", got)
 	}
 	for k, v := range want {
 		if got[k] != v {
-			t.Errorf("jsNameList[%q] = %q, want %q", k, got[k], v)
+			t.Errorf("nameList[%q] = %q, want %q", k, got[k], v)
 		}
 	}
 }
@@ -1081,5 +1081,75 @@ func TestGenericTypeScriptHopLimitNotMemoized(t *testing.T) {
 	ix := Build(root, files, testLang)
 	if !hasEdge(ix, "h:src/main.ts#run", "h:src/lib/leaf.ts#target", EdgeCall) {
 		t.Errorf("run's callees = %+v", ix.Callees("h:src/main.ts#run"))
+	}
+}
+
+// Python calls resolve through imports and aliases before falling back to
+// name matching (#66). Each package has a same-named decoy next to the
+// caller, which name matching alone would pick.
+func TestGenericPythonImports(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"orders/lib/util.py":     "def fmt(x):\n    return str(x)\n",
+		"orders/lib/__init__.py": "from .util import fmt\n",
+		"orders/store.py": `class Store:
+    def __init__(self):
+        self.items = {}
+
+    @classmethod
+    def create(cls):
+        return cls()
+`,
+		"orders/decoy.py": "def fmt(x):\n    pass\n\n\nclass Store:\n    @classmethod\n    def create(cls):\n        pass\n",
+		"orders/api.py": `from .lib.util import fmt as f
+from .store import Store as S
+import orders.lib.util as u
+from .lib import util
+from .lib import fmt
+from orders.store import (
+    Store,  # the class
+)
+
+
+def handle(x):
+    f(x)
+    S()
+    u.fmt(x)
+    util.fmt(x)
+    fmt(x)
+    Store.create()
+`,
+		"orders/sub/decoy.py": "def fmt(x):\n    pass\n",
+		"orders/sub/job.py": `from ..lib.util import *
+
+
+def run(x):
+    return fmt(x)
+`,
+		"orders/sub/plain.py": `import orders.lib.util
+
+
+def go(x):
+    return orders.lib.util.fmt(x)
+`,
+	})
+	ix := Build(root, files, testLang)
+	target := "h:orders/lib/util.py#fmt"
+	for _, from := range []string{"h:orders/api.py#handle", "h:orders/sub/job.py#run", "h:orders/sub/plain.py#go"} {
+		if !hasEdge(ix, from, target, EdgeCall) {
+			t.Errorf("%s should call %s: %+v", from, target, ix.Callees(from))
+		}
+	}
+	handle := "h:orders/api.py#handle"
+	for _, to := range []string{"h:orders/store.py#Store.__init__", "h:orders/store.py#Store.create"} {
+		if !hasEdge(ix, handle, to, EdgeCall) {
+			t.Errorf("handle should call %s: %+v", to, ix.Callees(handle))
+		}
+	}
+	for _, from := range []string{handle, "h:orders/sub/job.py#run", "h:orders/sub/plain.py#go"} {
+		for _, e := range ix.Callees(from) {
+			if strings.Contains(e.To, "decoy") {
+				t.Errorf("%s linked to a decoy: %+v", from, e)
+			}
+		}
 	}
 }

@@ -44,6 +44,11 @@ every merged pull request.
   function, through named, aliased, default and namespace imports,
   re-exports and barrels, and CommonJS `require`. Calls that don't go
   through a resolvable import still match by name.
+- **Python calls resolve through imports** (#66): aliases (`import … as`,
+  `from … import … as`), module-qualified calls (`u.fmt()`,
+  `util.fmt()`), relative imports, `from m import *` and names re-exported
+  by a package's `__init__.py` link to the definition imported, not a
+  same-named one elsewhere.
 - **Blast radius:** the full caller graph is replaced by a view that
   goes by distance. Direct callers are listed first with their test
   status and coverage, and untested ones are flagged. Callers further out

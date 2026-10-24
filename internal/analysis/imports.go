@@ -43,6 +43,9 @@ type moduleScope struct {
 	// defaultLocal is the local name exported as default ("" if unknown).
 	defaultLocal string
 	reexports    []reexport
+	// wildcards are files whose every name is in scope here (Python's
+	// `from m import *`; JS's `export *` re-exports without binding).
+	wildcards []string
 }
 
 // newModuleScope returns an empty scope.
@@ -61,6 +64,7 @@ type importBinder interface {
 var binders = map[string]importBinder{
 	"typescript": jsBinder{},
 	"javascript": jsBinder{},
+	"python":     pyBinder{},
 }
 
 // moduleGraph is every bound file's scope plus what each file defines at the
@@ -210,7 +214,7 @@ func (g *moduleGraph) target(file, recv, name string) (sym *Symbol, handled bool
 	if recv == "" {
 		b, found := scope.bindings[name]
 		if !found {
-			return nil, false
+			return g.wildcardTarget(scope, name)
 		}
 		if b.name == nsName {
 			// `const save = require('./save'); save()`: module.exports.
@@ -244,6 +248,19 @@ func (g *moduleGraph) target(file, recv, name string) (sym *Symbol, handled bool
 	// object literal: `Store.create()`, `api.list()`.
 	s := g.members[t][local+"."+name]
 	return s, s != nil
+}
+
+// wildcardTarget finds name among the definitions a scope's wildcard
+// imports bring in.
+func (g *moduleGraph) wildcardTarget(scope *moduleScope, name string) (*Symbol, bool) {
+	for _, file := range scope.wildcards {
+		if t, local, ok := g.exportTarget(file, name, 0); ok && local != nsName {
+			if s := g.defs[t][local]; s != nil {
+				return s, true
+			}
+		}
+	}
+	return nil, false
 }
 
 // jsBinder reads ES module imports and exports and CommonJS require/exports
@@ -294,7 +311,7 @@ func (jsBinder) bind(gf *genericFile, src, masked string, resolve func(string) s
 			scope.bindings[m[2]] = importBinding{file: file, name: nsName}
 			return
 		}
-		for imported, local := range jsNameList(strings.Trim(m[2], "{}"), ":") {
+		for imported, local := range nameList(strings.Trim(m[2], "{}"), ":") {
 			scope.bindings[local] = importBinding{file: file, name: imported}
 		}
 	})
@@ -309,12 +326,12 @@ func (jsBinder) bind(gf *genericFile, src, masked string, resolve func(string) s
 			scope.reexports = append(scope.reexports, reexport{exported: exported, name: nsName, file: file})
 			return
 		}
-		for name, exported := range jsNameList(strings.Trim(clause, "{}"), " as ") {
+		for name, exported := range nameList(strings.Trim(clause, "{}"), " as ") {
 			scope.reexports = append(scope.reexports, reexport{exported: exported, name: name, file: file})
 		}
 	})
 	each(jsExportListRe, func(m []string) {
-		for local, exported := range jsNameList(m[2], " as ") {
+		for local, exported := range nameList(m[2], " as ") {
 			if exported == "default" {
 				scope.defaultLocal = local
 				continue
@@ -332,7 +349,7 @@ func (jsBinder) bind(gf *genericFile, src, masked string, resolve func(string) s
 			scope.defaultLocal = m[2]
 			return
 		}
-		for exported, local := range jsNameList(strings.Trim(m[2], "{}"), ":") {
+		for exported, local := range nameList(strings.Trim(m[2], "{}"), ":") {
 			scope.exports[exported] = local
 		}
 	})
@@ -369,24 +386,24 @@ func bindJSImportClause(scope *moduleScope, clause, file string) {
 		named = clause[i+1 : j]
 		clause = clause[:i] + clause[j+1:]
 	}
-	for imported, local := range jsNameList(named, " as ") {
+	for imported, local := range nameList(named, " as ") {
 		scope.bindings[local] = importBinding{file: file, name: imported}
 	}
 	for _, part := range strings.Split(clause, ",") {
 		f := strings.Fields(part)
 		switch {
-		case len(f) == 1 && isJSIdent(f[0]):
+		case len(f) == 1 && isIdent(f[0]):
 			scope.bindings[f[0]] = importBinding{file: file, name: "default"}
-		case len(f) == 3 && f[0] == "*" && f[1] == "as" && isJSIdent(f[2]):
+		case len(f) == 3 && f[0] == "*" && f[1] == "as" && isIdent(f[2]):
 			scope.bindings[f[2]] = importBinding{file: file, name: nsName}
 		}
 	}
 }
 
-// jsNameList parses a comma-separated list of names, each optionally renamed
+// nameList parses a comma-separated list of names, each optionally renamed
 // with sep (`a as b`, `a: b`), into a map from the original name to the new
 // one. Inline `type` modifiers are dropped and malformed entries skipped.
-func jsNameList(list, sep string) map[string]string {
+func nameList(list, sep string) map[string]string {
 	out := map[string]string{}
 	for _, item := range strings.Split(list, ",") {
 		item = strings.TrimSpace(item)
@@ -398,15 +415,16 @@ func jsNameList(list, sep string) map[string]string {
 		if i := strings.Index(item, sep); i >= 0 {
 			from, to = strings.TrimSpace(item[:i]), strings.TrimSpace(item[i+len(sep):])
 		}
-		if isJSIdent(from) && isJSIdent(to) {
+		if isIdent(from) && isIdent(to) {
 			out[from] = to
 		}
 	}
 	return out
 }
 
-// isJSIdent reports whether s is a JavaScript identifier.
-func isJSIdent(s string) bool {
+// isIdent reports whether s is an identifier (JavaScript identifiers also
+// allow $).
+func isIdent(s string) bool {
 	if s == "" || s[0] >= '0' && s[0] <= '9' {
 		return false
 	}
