@@ -1,7 +1,7 @@
 """Request handlers for the orders API."""
 import json
 
-from . import notify
+from . import notify, receipt
 from .order import InvalidOrder, Order, total, validate
 from .store import MemoryStore, NotFound
 
@@ -28,3 +28,13 @@ def get_order(store: MemoryStore, order_id: str) -> tuple[int, dict]:
         return 200, store.get(order_id).__dict__
     except NotFound:
         return 404, {"error": "not found"}
+
+
+def get_receipt(store: MemoryStore, customer: str, order_ids: list[str]) -> tuple[int, dict]:
+    """Return a printable receipt for some of a customer's orders."""
+    try:
+        orders = [store.get(i) for i in order_ids]
+    except NotFound as e:
+        return 404, {"error": f"not found: {e}"}
+    lines = [receipt.line(o) for o in orders]
+    return 200, {"lines": [receipt.heading(customer, receipt.grand_total(orders)), *lines]}

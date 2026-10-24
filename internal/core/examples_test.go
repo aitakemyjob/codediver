@@ -109,15 +109,16 @@ var examples = []exampleCase{
 		validate: "validate", file: "src/order.ts", edit: proposals.Edit{Old: "if (o.qty > 1000)", New: "if (o.qty > 500)"}, caller: "submit", callerStatus: StatusNotRun,
 	},
 	{
-		name: "python-api", framework: "pytest", tests: 4, covFiles: 5,
+		name: "python-api", framework: "pytest", tests: 4, covFiles: 10,
 		funcs: map[string]fnExpect{
 			"validate":     {cover: "partial", tested: true, callers: 2},
-			"total":        {cover: "full", tested: true, callers: 2},
+			"total":        {cover: "full", tested: true, callers: 4}, // create_order, a test, receipt's format and grand_total as pricing.total
 			"_unit_price":  {cover: "partial", tested: true, callers: 1},
 			"legacy_total": {cover: "partial", callers: 0}, // the def line runs on import
 			"get_order":    {cover: "partial", callers: 0},
-			// get_order and the store test; data.get(...) dict calls don't count.
-			"MemoryStore.get": {cover: "partial", tested: true, callers: 2},
+			// get_order, get_receipt and the store test; data.get(...) dict
+			// calls don't count.
+			"MemoryStore.get": {cover: "partial", tested: true, callers: 3},
 		},
 		hardToTest: "send", hints: []string{"env", "clock", "network"},
 		validate: "validate", file: "orders/order.py", edit: proposals.Edit{Old: "if o.qty > 1000:", New: "if o.qty > 500:"}, caller: "create_order", callerStatus: StatusCaller,
@@ -448,6 +449,46 @@ func TestExampleTypeScriptImports(t *testing.T) {
 	}
 	if calls(cartPage, id("receipt/format.ts", "format")) || calls(receipt, id("cart/format.ts", "format")) || calls(id("receipt/summary.ts", "cartLine"), id("receipt/format.ts", "format")) {
 		t.Errorf("a call linked to the same-named format it doesn't import")
+	}
+}
+
+// TestExamplePythonImports pins calls the python-api receipt code makes
+// through imports (#66): each links to the definition its module imports,
+// under an alias, through a package __init__.py or a module alias, and
+// never to the same-named format in another module.
+func TestExamplePythonImports(t *testing.T) {
+	s, rt := openExample(t, "python-api")
+	ix, err := s.Index(context.Background(), rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := func(file, name string) string { return "h:orders/" + file + "#" + name }
+	text, line := id("text.py", "format"), id("receipt/lines.py", "format")
+	calls := func(from, to string) bool {
+		for _, c := range ix.Callees(from) {
+			if c.To == to {
+				return true
+			}
+		}
+		return false
+	}
+	for _, e := range []struct{ from, to, how string }{
+		// These need the import: name matching picks the format beside
+		// heading, and finds nothing called dollars or line.
+		{id("receipt/heading.py", "heading"), text, "from ..text import format, with another format in the caller's own folder"},
+		{line, text, "from ..text import format as dollars, called in an f-string"},
+		{id("api.py", "get_receipt"), line, "from . import receipt; receipt.line(), re-exported by __init__.py as line"},
+		// Name matching happens to get these right too: the names are unique.
+		{id("receipt/totals.py", "grand_total"), id("order.py", "total"), "import orders.order as pricing; pricing.total()"},
+		{id("api.py", "get_receipt"), id("receipt/totals.py", "grand_total"), "receipt.grand_total(), re-exported by from .totals import *"},
+		{id("api.py", "get_receipt"), id("receipt/heading.py", "heading"), "receipt.heading(), re-exported by __init__.py"},
+	} {
+		if !calls(e.from, e.to) {
+			t.Errorf("%s: %s should call %s: %+v", e.how, e.from, e.to, ix.Callees(e.from))
+		}
+	}
+	if calls(id("receipt/heading.py", "heading"), line) {
+		t.Errorf("heading linked to the format beside it, which it doesn't import")
 	}
 }
 

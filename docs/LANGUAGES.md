@@ -25,10 +25,10 @@ radius.
 - Per-language patterns run over the source after comments and string
   contents are blanked out. They find definitions, where each one ends
   (braces, indentation or `end`), imports, and calls.
-- Calls are found as `name(` or `receiver.name(`. In TypeScript and
-  JavaScript, a call is first resolved through the calling file's imports
-  (see below). Otherwise, and in every other language, it is matched **by
-  name**.
+- Calls are found as `name(` or `receiver.name(`. In TypeScript,
+  JavaScript and Python, a call is first resolved through the calling
+  file's imports (see below). Otherwise, and in every other language, it
+  is matched **by name**.
 - When several definitions share a name, CodeDiver prefers:
   1. a method of the same class, for `this.`/`self.` calls
   2. a definition in the same file
@@ -65,7 +65,7 @@ It **does not** guarantee that:
 |---|---|---|---|---|---|---|
 | **Go** | type-checked | type-checked, with interface dispatch | full graph | packages and external modules | `go test`, subtests, table cases | coverprofile; per-test runs |
 | **TypeScript, JavaScript** | lexical | through imports, else name match `~`; JSX renders count as calls | — | directories, from relative imports | Vitest, Jest, Mocha, Playwright, node:test | LCOV |
-| **Python** | lexical | name match `~` | — | directories, from imports | pytest, unittest | LCOV, Cobertura; per-test runs (pytest) |
+| **Python** | lexical | through imports, else name match `~` | — | directories, from imports | pytest, unittest | LCOV, Cobertura; per-test runs (pytest) |
 | **Java, Kotlin, Scala** | lexical | name match `~` | — | directories, from imports | JUnit | JaCoCo, Cobertura |
 | **C#** | lexical | name match `~` | — | directories, from `using` | xUnit, NUnit, MSTest | Cobertura |
 | **Rust** | lexical | name match `~` | — | `mod` and `crate::` paths | `#[test]` | LCOV |
@@ -169,11 +169,23 @@ Dependencies:
 
 ### Python
 
+How calls resolve through imports:
+- A call to an imported name links to the definition it imports, even when
+  other modules define the same name: `from .util import fmt as f` then
+  `f()`, `from .store import Store as S` then `S()` (its `__init__`),
+  `import orders.util as u` then `u.fmt()`, `from orders import util`
+  then `util.fmt()`, and `from .util import *`.
+- Relative (`.`, `..`) and absolute imports both resolve, and names a
+  package's `__init__.py` imports are followed to where they're defined.
+- Class methods called on an imported class (`Store.create()`) link to
+  that class's method.
+- When the import doesn't lead to a definition in the repository (the
+  standard library, an installed package), the call falls back to name
+  matching. These edges are still marked `~`.
+
 - **Same-named methods:** `store.save()` links to the first class with a
   `save` method; with both `Store.save` and `Cache.save`, it can pick
   `Cache.save`. *[#67]*
-- **Import aliases:** `from .store import Store as S` then `S()` doesn't
-  link to `Store`. *[#66]*
 - **Functions passed as values** get no edge: `sorted(xs, key=keyfn)`,
   `map(fn, xs)`, callbacks. *[#68]*
 - **Implicit calls:** `@property` reads and dunder methods (`__enter__`,
@@ -217,7 +229,6 @@ Dependencies:
   on a path.
 
 [#18]: https://github.com/aitakemyjob/codediver/issues/18
-[#66]: https://github.com/aitakemyjob/codediver/issues/66
 [#67]: https://github.com/aitakemyjob/codediver/issues/67
 [#68]: https://github.com/aitakemyjob/codediver/issues/68
 [#69]: https://github.com/aitakemyjob/codediver/issues/69
