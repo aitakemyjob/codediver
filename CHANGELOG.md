@@ -39,6 +39,13 @@ every merged pull request.
   report the coverage of the change.
 
 ### Changed
+- **Go control flow and generics** (#74): calls through generic interfaces
+  (`Repo[int]`) dispatch to the types implementing that instantiation,
+  generic ones included. In the Logic view, a block holding a closure
+  opens the closure's own control flow, with a breadcrumb back; `goto`
+  connects to its label; and `t.Fatal`, `FailNow` and `Skip*` end a test
+  like `panic` does. `get_function_flow` shows closures nested under
+  their block.
 - **Module-level code is a caller** (#69): each file's top-level code is
   a `<module>` symbol that calls what it calls. That covers TypeScript,
   JavaScript and Python module statements (`render(<App />)`,

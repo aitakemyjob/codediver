@@ -33,7 +33,7 @@ How precise each result is depends on the language: see
 |---|---|
 | `get_call_graph` | Callees, callers or both to a depth; optional external calls and function references (`ref`). Type-checked for Go; name-matched (`~`) elsewhere, with a precision note. |
 | `trace_to` | Every caller path from entry points to a function ("how is this triggered?"). Outside Go, an entry is a caller with no caller found. |
-| `get_function_flow` | Control-flow graph with inputs/outputs. Go only; other languages get the signature and one body block. |
+| `get_function_flow` | Control-flow graph with inputs/outputs; closures are listed as nested flows under the block holding them. Go only; other languages get the signature and one body block. |
 | `get_language_support` | How precise analysis is for a language, what `~` guarantees, and its known gaps; omit `language` for every language. Also served as the resource `codediver://docs/languages`. |
 | `get_dependencies` | Package/directory dependency graph, optionally focused on one package. |
 | `get_types` | Structs/classes/interfaces with fields, methods and `implements` edges. |

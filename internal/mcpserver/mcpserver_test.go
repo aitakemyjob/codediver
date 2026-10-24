@@ -302,3 +302,18 @@ func TestToolsAreDocumented(t *testing.T) {
 		}
 	}
 }
+
+// Closures are rendered as nested flows under the node holding them.
+func TestRenderFlowClosures(t *testing.T) {
+	lit := &analysis.Flow{Signature: "func()", File: "a.go", Line: 3, EndLine: 3, Nodes: []analysis.FlowNode{{ID: "n0", Kind: analysis.FlowStart, Label: "func()", Line: 3}}}
+	fl := &analysis.Flow{Signature: "func F()", File: "a.go", Line: 1, EndLine: 4, Nodes: []analysis.FlowNode{
+		{ID: "n0", Kind: analysis.FlowStart, Label: "F()", Line: 1},
+		{ID: "n2", Kind: analysis.FlowBlock, Code: []string{"go func() {}()"}, Line: 3, Closures: []*analysis.Flow{lit}},
+	}}
+	out := renderFlow(fl)
+	for _, want := range []string{"    closure in n2:\n", "      func()  (a.go:3-3)\n", "        n0 [start L3] func()\n"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("renderFlow missing %q:\n%s", want, out)
+		}
+	}
+}

@@ -11,6 +11,8 @@ export interface FlowCanvasProps {
   highlight?: Set<string>;
   onSelect?: (id: string) => void;
   onOpen?: (id: string) => void;
+  /** Opens closure index of node nodeId. */
+  onClosure?: (nodeId: string, index: number) => void;
 }
 
 /** Edge color by meaning: true (green), false/abort (red), loop-back. */
@@ -51,7 +53,7 @@ export function focusReadable(
 }
 
 /** Renders a control-flow graph laid out top-down with ELK. */
-function Inner({ flow, notes, selected, highlight, onSelect, onOpen }: FlowCanvasProps) {
+function Inner({ flow, notes, selected, highlight, onSelect, onOpen, onClosure }: FlowCanvasProps) {
   const rf = useReactFlow();
   const hostRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<Map<string, { x: number; y: number }>>();
@@ -79,10 +81,17 @@ function Inner({ flow, notes, selected, highlight, onSelect, onOpen }: FlowCanva
     return flow.nodes.map((n) => {
       const sz = sizes.get(n.id)!;
       const note = notes?.get(n.id);
-      const data: FNodeData = { node: n, selected: n.id === selected, dim: highlight ? !highlight.has(n.id) : false, note: note?.text, stepNo: note?.n };
+      const data: FNodeData = {
+        node: n,
+        selected: n.id === selected,
+        dim: highlight ? !highlight.has(n.id) : false,
+        note: note?.text,
+        stepNo: note?.n,
+        onClosure: onClosure && n.closures?.length ? (i: number) => onClosure(n.id, i) : undefined,
+      };
       return { id: n.id, type: 'flow', position: pos.get(n.id) ?? { x: 0, y: 0 }, data, width: sz.width, height: sz.height, style: { width: sz.width, height: sz.height } };
     });
-  }, [pos, flow, sizes, notes, selected, highlight]);
+  }, [pos, flow, sizes, notes, selected, highlight, onClosure]);
 
   const edges: Edge[] = useMemo(
     () =>

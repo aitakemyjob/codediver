@@ -549,7 +549,7 @@ func (s *Server) register() {
 			return renderGraph(g), nil
 		})
 
-	addTool(s, &mcp.Tool{Name: "get_function_flow", Description: "Control-flow graph of a function (branches, loops, switch cases, early returns, defers, goroutines, panics) plus its inputs and outputs. Go only: other languages return the signature and a single body block, so read the code instead.", Annotations: readOnly("Function flow")},
+	addTool(s, &mcp.Tool{Name: "get_function_flow", Description: "Control-flow graph of a function (branches, loops, switch cases, early returns, defers, goroutines, panics, goto, test stops like t.Fatal) plus its inputs and outputs, with each closure's own graph nested under the block that holds it. Go only: other languages return the signature and a single body block, so read the code instead.", Annotations: readOnly("Function flow")},
 		func(a flowArgs) string { return a.Symbol }, func(ctx context.Context, a flowArgs) (string, error) {
 			rt, err := c.AgentRepo(a.Repo)
 			if err != nil {

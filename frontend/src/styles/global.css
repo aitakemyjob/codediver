@@ -346,6 +346,12 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; min-height: 
 .fnode .code-line { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
 .fnode .calls { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
 .fnode .calls span { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--accent-soft); color: var(--accent); }
+.fnode .closures { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+.fnode .closures button { font: inherit; font-size: 10px; padding: 1px 7px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--accent-2) 55%, transparent); background: transparent; color: var(--accent-2); cursor: pointer; }
+.fnode .closures button:hover { background: color-mix(in srgb, var(--accent-2) 12%, transparent); }
+.flow-crumbs { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.flow-crumbs button { font: inherit; border: none; background: none; padding: 0 2px; color: var(--accent); cursor: pointer; }
+.flow-crumbs .here { color: var(--text-1); font-weight: 600; }
 .fnode.k-start, .fnode.k-end { border-radius: 999px; text-align: center; font-weight: 700; background: var(--accent-soft); border-color: var(--accent); }
 .fnode.k-cond, .fnode.k-loop, .fnode.k-switch { border-color: color-mix(in srgb, var(--accent-2) 60%, transparent); background: color-mix(in srgb, var(--accent-2) 9%, var(--bg-2)); }
 .fnode.k-cond .kind, .fnode.k-loop .kind, .fnode.k-switch .kind { color: var(--accent-2); }

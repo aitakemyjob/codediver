@@ -166,14 +166,22 @@ func precisionNote(g *analysis.Graph) string {
 }
 
 // renderFlow describes a control-flow graph: signature, inputs, outputs
-// and one line per node with its outgoing edges.
+// and one line per node with its outgoing edges, followed by the flows of
+// the closures inside it, indented under the node that holds them.
 func renderFlow(fl *analysis.Flow) string {
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "%s  (%s:%d-%d)\n", fl.Signature, fl.File, fl.Line, fl.EndLine)
+	writeFlow(&sb, fl, "")
+	return sb.String()
+}
+
+// writeFlow writes fl as renderFlow does, each line prefixed by indent.
+func writeFlow(sb *strings.Builder, fl *analysis.Flow, indent string) {
+	sb.WriteString(indent)
+	fmt.Fprintf(sb, "%s  (%s:%d-%d)\n", fl.Signature, fl.File, fl.Line, fl.EndLine)
 	if fl.Receiver != nil {
-		fmt.Fprintf(&sb, "receiver: %s %s\n", fl.Receiver.Name, fl.Receiver.Type)
+		fmt.Fprintf(sb, "%sreceiver: %s %s\n", indent, fl.Receiver.Name, fl.Receiver.Type)
 	}
-	fmt.Fprintf(&sb, "inputs:  %s\noutputs: %s\n\ncontrol flow:\n", orNone(params(fl.Inputs)), orNone(params(fl.Outputs)))
+	fmt.Fprintf(sb, "%sinputs:  %s\n%soutputs: %s\n\n%scontrol flow:\n", indent, orNone(params(fl.Inputs)), indent, orNone(params(fl.Outputs)), indent)
 	out := map[string][]analysis.FlowEdge{}
 	for _, e := range fl.Edges {
 		out[e.From] = append(out[e.From], e)
@@ -186,7 +194,7 @@ func renderFlow(fl *analysis.Flow) string {
 				text = text[:157] + "..."
 			}
 		}
-		fmt.Fprintf(&sb, "  %s [%s L%d] %s", n.ID, n.Kind, n.Line, text)
+		fmt.Fprintf(sb, "%s  %s [%s L%d] %s", indent, n.ID, n.Kind, n.Line, text)
 		var targets []string
 		for _, e := range out[n.ID] {
 			t := e.To
@@ -202,8 +210,11 @@ func renderFlow(fl *analysis.Flow) string {
 			sb.WriteString("  ⇒ " + strings.Join(targets, ", "))
 		}
 		sb.WriteString("\n")
+		for _, c := range n.Closures {
+			fmt.Fprintf(sb, "%s    closure in %s:\n", indent, n.ID)
+			writeFlow(sb, c, indent+"      ")
+		}
 	}
-	return sb.String()
 }
 
 // orNone returns s, or "(none)" when s is empty.

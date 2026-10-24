@@ -53,6 +53,7 @@ func analyzeGo(root string, files []string, ix *Index, merge map[[3]string]int) 
 			Uses:       map[*ast.Ident]types.Object{},
 			Selections: map[*ast.SelectorExpr]*types.Selection{},
 			Types:      map[ast.Expr]types.TypeAndValue{},
+			Instances:  map[*ast.Ident]types.Instance{},
 		},
 	}
 	a.load(files)
@@ -714,6 +715,23 @@ func (a *goAnalyzer) linkImplementations() {
 			concretes = append(concretes, named)
 		}
 	}
+	// Generic types take part through the instantiations the code uses:
+	// Repo[int] is matched against intRepo, memRepo[int] against Repo[int].
+	seen := map[string]bool{}
+	for _, inst := range a.info.Instances {
+		named, ok := inst.Type.(*types.Named)
+		if !ok || named.Obj().Pkg() == nil || seen[types.TypeString(named, nil)] {
+			continue
+		}
+		seen[types.TypeString(named, nil)] = true
+		if it, ok := named.Underlying().(*types.Interface); ok {
+			if sym := a.ix.Symbols["go:"+named.Obj().Pkg().Path()+"."+named.Obj().Name()]; sym != nil && it.NumMethods() > 0 {
+				ifaces = append(ifaces, iface{sym, it})
+			}
+			continue
+		}
+		concretes = append(concretes, named)
+	}
 	if len(ifaces)*len(concretes) > 4_000_000 {
 		return
 	}
@@ -732,7 +750,7 @@ func (a *goAnalyzer) linkImplementations() {
 			default:
 				continue
 			}
-			csym.Implements = append(csym.Implements, in.sym.ID)
+			csym.Implements = appendUnique(csym.Implements, in.sym.ID)
 			a.ix.addEdge(Edge{From: csym.ID, To: in.sym.ID, Kind: EdgeImplement}, a.merge)
 			mset := types.NewMethodSet(impl)
 			for i := 0; i < in.t.NumMethods(); i++ {
@@ -742,7 +760,7 @@ func (a *goAnalyzer) linkImplementations() {
 					continue
 				}
 				to := a.symbolForFunc(sel.Obj().(*types.Func))
-				from := goSymbolID(im)
+				from := goSymbolID(im.Origin())
 				if to != "" && a.ix.Symbols[from] != nil {
 					a.ix.addEdge(Edge{From: from, To: to, Kind: EdgeDispatch}, a.merge)
 				}

@@ -18,6 +18,8 @@ export interface FNodeData extends Record<string, unknown> {
   selected?: boolean;
   note?: string;
   stepNo?: number;
+  /** Opens the node's closure at index; absent when it has none to open. */
+  onClosure?: (index: number) => void;
 }
 
 /** Invisible connection points, left/right or top/bottom by layout. */
@@ -83,6 +85,7 @@ export function flowSize(n: FlowNode, note?: string): { width: number; height: n
   let height = 18 + 16 * lines.length + (n.kind === 'start' || n.kind === 'end' ? 0 : 16);
   if (n.code && n.code.length > 6) height += 16;
   if (n.calls?.length) height += 24 * Math.ceil(Math.min(n.calls.length, 6) / 3);
+  if (n.closures?.length) height += 24 * Math.ceil(n.closures.length / 3);
   if (note) height += 14 + Math.ceil(textWidth(note, 11) / (width - 24)) * 15;
   return { width, height };
 }
@@ -212,7 +215,7 @@ const flowKindLabel: Partial<Record<FlowNode['kind'], string>> = {
  * narrated step.
  */
 export const FlowNodeView = memo(({ data }: NodeProps) => {
-  const { node: n, dim, selected, note, stepNo } = data as FNodeData;
+  const { node: n, dim, selected, note, stepNo, onClosure } = data as FNodeData;
   const lines = n.code?.length ? n.code : [n.label];
   const terminal = n.kind === 'start' || n.kind === 'end';
   return (
@@ -234,6 +237,25 @@ export const FlowNodeView = memo(({ data }: NodeProps) => {
         <div className="calls">
           {n.calls.slice(0, 6).map((c) => (
             <span key={c}>{c}()</span>
+          ))}
+        </div>
+      )}
+      {n.closures && n.closures.length > 0 && (
+        <div className="closures">
+          {n.closures.map((c, i) => (
+            <button
+              key={i}
+              type="button"
+              className="nodrag"
+              disabled={!onClosure}
+              title="Show this closure's control flow"
+              onClick={(e) => {
+                e.stopPropagation();
+                onClosure?.(i);
+              }}
+            >
+              ƒ closure L{c.line}
+            </button>
           ))}
         </div>
       )}
