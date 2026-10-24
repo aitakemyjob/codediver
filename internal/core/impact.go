@@ -76,7 +76,7 @@ type ImpactNode struct {
 	Review    bool `json:"review,omitempty"`
 	Heuristic bool `json:"heuristic,omitempty"`
 	// Entry says why a symbol with no callers is the top of a call path:
-	// main, exported or uncalled.
+	// main, module (a file's top-level code), exported or uncalled.
 	Entry string `json:"entry,omitempty"`
 }
 
@@ -306,6 +306,8 @@ func buildImpact(ix *analysis.Index, r *analysis.Reach, a *qaAnalysis, cv *impac
 			switch {
 			case sym.Name == "main" && sym.Kind == analysis.KindFunc:
 				n.Entry = "main"
+			case sym.Kind == analysis.KindModule:
+				n.Entry = "module"
 			case sym.Exported:
 				n.Entry = "exported"
 			default:

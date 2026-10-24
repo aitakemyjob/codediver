@@ -92,7 +92,7 @@ export interface Param {
   type: string;
 }
 
-export type SymbolKind = 'func' | 'method' | 'class' | 'struct' | 'interface' | 'type' | 'external';
+export type SymbolKind = 'func' | 'method' | 'class' | 'struct' | 'interface' | 'type' | 'external' | 'module';
 
 export interface CodeSymbol {
   id: string;
@@ -331,7 +331,7 @@ export interface ImpactNode {
   review?: boolean;
   heuristic?: boolean;
   /** Why nothing calls it: main, exported or uncalled. */
-  entry?: 'main' | 'exported' | 'uncalled';
+  entry?: 'main' | 'module' | 'exported' | 'uncalled';
 }
 
 /**

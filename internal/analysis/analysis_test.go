@@ -1153,3 +1153,94 @@ def go(x):
 		}
 	}
 }
+
+// A file's top-level code is its <module> symbol, which calls what that
+// code calls: TS/JS and Python module statements and Go package-level var
+// initializers. Test files, decorators and definitions don't count (#69).
+func TestModuleLevelCallers(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"go.mod": "module example.com/m\n\ngo 1.22\n",
+		"vars.go": `package m
+
+var total = compute(2)
+
+var handlers = map[string]func(){"a": handleA}
+
+func compute(n int) int { return n }
+
+func handleA() {}
+
+func unused() int { return compute(1) }
+`,
+		"src/App.tsx": "export function App() { return null }\n",
+		"src/main.tsx": `import { App } from './App'
+import { render } from './render'
+
+render(<App />)
+`,
+		"src/render.ts": "export function render(x: unknown) {}\n",
+		"src/App.test.tsx": `import { App } from './App'
+
+it('renders', () => { App() })
+`,
+		"app/cli.py": `import functools
+
+
+@functools.lru_cache()
+def main():
+    run()
+
+
+def run():
+    pass
+
+
+if __name__ == "__main__":
+    main()
+`,
+		"app/quiet.py": "def f():\n    pass\n",
+	})
+	ix := Build(root, files, testLang)
+	for _, e := range []struct{ from, to string }{
+		{"mod:vars.go", "go:example.com/m.compute"},
+		{"mod:src/main.tsx", "h:src/render.ts#render"},
+		{"mod:src/main.tsx", "h:src/App.tsx#App"},
+		{"mod:app/cli.py", "h:app/cli.py#main"},
+	} {
+		if !hasEdge(ix, e.from, e.to, EdgeCall) {
+			t.Errorf("%s should call %s: %+v", e.from, e.to, ix.Callees(e.from))
+		}
+	}
+	if !hasEdge(ix, "mod:vars.go", "go:example.com/m.handleA", EdgeRef) {
+		t.Errorf("a function value in an initializer is a ref: %+v", ix.Callees("mod:vars.go"))
+	}
+	mod := ix.Symbols["mod:src/main.tsx"]
+	if mod == nil || mod.Kind != KindModule || mod.Qualified != "main.tsx <module>" || !mod.Heuristic {
+		t.Fatalf("main.tsx module = %+v", mod)
+	}
+	if s := ix.SymbolAt("src/main.tsx", 4); s != nil {
+		t.Errorf("SymbolAt picked %+v; the module isn't a listed symbol", s)
+	}
+	if ix.Symbols["mod:src/App.test.tsx"] != nil || ix.Symbols["mod:app/quiet.py"] != nil {
+		t.Error("test files and files without top-level calls get no module")
+	}
+	// The decorator belongs to main, not the module.
+	for _, e := range ix.Callees("mod:app/cli.py") {
+		if e.To != "h:app/cli.py#main" {
+			t.Errorf("unexpected module callee %+v", e)
+		}
+	}
+	if st := ix.Stats(); st.Symbols != len(ix.Symbols)-3-countKind(ix, KindExternal) {
+		t.Errorf("stats count modules: %+v", st)
+	}
+}
+
+func countKind(ix *Index, k SymbolKind) int {
+	n := 0
+	for _, s := range ix.Symbols {
+		if s.Kind == k {
+			n++
+		}
+	}
+	return n
+}

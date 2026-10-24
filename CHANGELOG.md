@@ -39,6 +39,14 @@ every merged pull request.
   report the coverage of the change.
 
 ### Changed
+- **Module-level code is a caller** (#69): each file's top-level code is
+  a `<module>` symbol that calls what it calls. That covers TypeScript,
+  JavaScript and Python module statements (`render(<App />)`,
+  `if __name__ == "__main__": main()`) and Go package-level `var`
+  initializers. `App` in the `ts-react` example now has `main.tsx
+  <module>` as its caller. Modules are entry points in traces and the
+  blast radius, and have no test status. Test files' top level isn't
+  counted.
 - **TypeScript and JavaScript calls resolve through imports** (#65): a
   call links to the function its file imports instead of any same-named
   function, through named, aliased, default and namespace imports,

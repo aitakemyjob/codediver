@@ -14,7 +14,7 @@ const ringNote: Record<number, string> = {
   2: 'reach it through a direct caller',
   3: 'further out',
 };
-const entryLabel = { main: 'main', exported: 'exported', uncalled: 'no callers' } as const;
+const entryLabel = { main: 'main', module: 'module code', exported: 'exported', uncalled: 'no callers' } as const;
 
 /**
  * The blast radius of a change, closest first: direct callers in full with

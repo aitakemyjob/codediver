@@ -104,8 +104,9 @@ a limit of how the analysis works. Deeper analysis is tracked in [#18].
 - **Generic interfaces:** these get no `dispatch` edges. With
   `var r Repo[int] = intRepo{}` and `r.Get()`, the trace stops at
   `Repo.Get`. *[#74]*
-- **Package initializers:** `var x = compute()` gives `compute` no caller.
-  *[#69]*
+- **Package initializers:** calls in package-level `var` initializers
+  (`var x = compute()`) are made by the file's `<module>` (see *Trace
+  view* below). `init` functions are functions of their own.
 - **Closures:** calls inside a closure count for the enclosing function, as
   plain calls. `go func() { f() }()` records a call to `f`, not a `go`
   edge.
@@ -155,8 +156,9 @@ Edges that are wrong or missing:
 - Functions passed as values get no edge: `items.map(format)`,
   `promise.then(render)`, `emitter.on('done', notify)`. React components
   passed as props are an exception. *[#68]*
-- **Module-level code:** calls outside any function, like `render(<App />)`
-  in `main.tsx`, have no caller, so `App` looks uncalled. *[#69]*
+- **Module-level code:** calls outside any function and class, like
+  `render(<App />)` in `main.tsx`, are made by the file's `<module>`. Test
+  files are left out: their top level is `describe`/`it` blocks.
 - **Framework wiring:** decorators like `@Get()` read as calls to a symbol
   named `Get`. Framework entry points (route handlers, Workers, Durable
   Object methods) show no callers. *[#75]*
@@ -192,6 +194,8 @@ How calls resolve through imports:
   operators) aren't calls. *inherent*
 - **Decorated entry points:** `@app.route`, fixtures and task decorators
   show no callers. *[#75]*
+- **Module-level code** (including `if __name__ == "__main__": main()`)
+  is made by the file's `<module>`. Test files are left out.
 
 ### Java, Kotlin, C# and Rust
 
@@ -219,7 +223,10 @@ How calls resolve through imports:
   6 calls by default and at most 200 functions. Import and `implements`
   edges are skipped.
 - **Entry points:** any caller with no callers of its own is badged as an
-  entry. In Go that is accurate apart from the external interfaces above.
+  entry. A file's top-level code appears as `<module>` (`main.tsx
+  <module>`): in TypeScript, JavaScript and Python it's the module's
+  statements, in Go its package-level var initializers. It is never called
+  and isn't a function, so it has no test status. In Go that is accurate apart from the external interfaces above.
   For lexical languages it means *no caller was found*, so framework
   handlers, object-literal methods and decorated functions appear as
   entries.
@@ -231,7 +238,6 @@ How calls resolve through imports:
 [#18]: https://github.com/aitakemyjob/codediver/issues/18
 [#67]: https://github.com/aitakemyjob/codediver/issues/67
 [#68]: https://github.com/aitakemyjob/codediver/issues/68
-[#69]: https://github.com/aitakemyjob/codediver/issues/69
 [#70]: https://github.com/aitakemyjob/codediver/issues/70
 [#71]: https://github.com/aitakemyjob/codediver/issues/71
 [#72]: https://github.com/aitakemyjob/codediver/issues/72
