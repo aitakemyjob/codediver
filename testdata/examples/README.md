@@ -84,7 +84,7 @@ every language and the known gaps, see
 | Functions and methods | ✓ | ✓ | ✓ | ✓ |
 | Tests discovered | ✓ | ✓ (describe/it) | ✓ (functions and classes) | ✓ (JUnit 5, nested classes) |
 | Test → code mapping | ✓ | ✓ | ✓ | ✓ (tests in the mirrored `src/test` package) |
-| Call edges | ✓ type-aware | through imports, else name matching (`~`) | name matching (`~`) | name matching (`~`) |
+| Call edges | ✓ type-aware | through imports, else name matching (`~`) | through imports, else name matching (`~`) | name matching (`~`) |
 | JSX use (`<OrderSummary />`) as a call | n/a | ✓ (`component={Foo}` and `memo(Foo)` as references) | n/a | n/a |
 | Calls inside components with destructured props | n/a | ✓ | n/a | n/a |
 | Calls inside template literals (`` `${f(x)}` ``) | n/a | ✓ | n/a | n/a |
@@ -93,7 +93,7 @@ every language and the known gaps, see
 | Object-literal methods (`ordersApi.create`) and anonymous default exports (`default`) | n/a | ✓ | n/a | n/a |
 | `super.subtotal()` and `cart?.subtotal()` | n/a | ✓ (`super` goes to the `extends` class) | n/a | n/a |
 | Multi-line `import {…} from` as a dependency | n/a | ✓ | n/a | n/a |
-| Calls through imports: two `format`s told apart (`receipt/summary.ts` uses the cart's, not the one beside it), `total as orderTotal`, `import * as receipt` through a barrel (`formatLine`, `export *`), a default import as `emit` | ✓ type-aware | ✓ (`ReceiptPage`, `cartLine`, `grandTotal`) | n/a | n/a |
+| Calls through imports: two `format`s told apart (`receipt/summary.ts` uses the cart's, not the one beside it), `total as orderTotal`, `import * as receipt` through a barrel (`formatLine`, `export *`), a default import as `emit` | ✓ type-aware | ✓ (`ReceiptPage`, `cartLine`, `grandTotal`) | ✓ `orders/receipt`: `heading` uses `text.py`'s `format`, not the one beside it; `format as dollars`; `import orders.order as pricing`; `from . import receipt` with names re-exported by `__init__.py` (`line`, `from .totals import *`) | n/a |
 | Calls from module-level code (`render(<App />)` in `main.tsx`) | n/a | ✗: not inside a function, so `App` has no caller | ✗ | n/a |
 | Same method name on unrelated types | ✓ type-aware | built-in names (`get`, `push`…) only link when the receiver looks like the class | same as TypeScript (`store.get` → `MemoryStore.get`, not `data.get`) | name matching |
 | Coverage import | ✓ coverprofile | ✓ LCOV | ✓ LCOV | ✓ JaCoCo |

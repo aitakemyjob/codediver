@@ -48,7 +48,8 @@ every merged pull request.
   `from … import … as`), module-qualified calls (`u.fmt()`,
   `util.fmt()`), relative imports, `from m import *` and names re-exported
   by a package's `__init__.py` link to the definition imported, not a
-  same-named one elsewhere.
+  same-named one elsewhere. The `python-api` example's receipt package
+  shows each case.
 - **Blast radius:** the full caller graph is replaced by a view that
   goes by distance. Direct callers are listed first with their test
   status and coverage, and untested ones are flagged. Callers further out
