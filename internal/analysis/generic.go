@@ -694,7 +694,8 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 		}
 	}
 
-	// Name-matched call edges.
+	// Call edges: through imports where they resolve, else by name.
+	finder := newFinderChain(byName, newModuleGraph(gfiles, fileSet))
 	for _, gf := range gfiles {
 		for _, s := range gf.syms {
 			if !s.Kind.IsCallable() {
@@ -727,14 +728,7 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 					if keywords[name] && (recv == "" || !definable[name]) {
 						continue
 					}
-					var target *Symbol
-					if recv == "super" {
-						// The parent class's method, when the parent is in
-						// the repository; never the caller's own.
-						target = superTarget(gf.extends[s.Parent], byName[name])
-					} else {
-						target = pickTarget(s, recv, byName[name], gf.path)
-					}
+					target := finder.find(callSite{from: s, file: gf, recv: recv, name: name})
 					if target == nil || target.ID == s.ID && recv == "" {
 						continue
 					}
@@ -763,10 +757,14 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 				if jsxFile(gf.path) {
 					// Rendering a component is calling it; passing one is a reference.
 					link := func(name string, kind EdgeKind) {
+						recv := ""
 						if i := strings.LastIndexByte(name, '.'); i >= 0 {
-							name = name[i+1:]
+							recv, name = name[:i], name[i+1:]
+							if j := strings.LastIndexByte(recv, '.'); j >= 0 {
+								recv = recv[j+1:]
+							}
 						}
-						if t := pickTarget(s, "", byName[name], gf.path); t != nil && t.ID != s.ID {
+						if t := finder.find(callSite{from: s, file: gf, recv: recv, name: name}); t != nil && t.ID != s.ID {
 							ix.addEdge(Edge{From: s.ID, To: t.ID, Kind: kind, Lines: []int{ln}, Heuristic: true}, merge)
 						}
 					}
