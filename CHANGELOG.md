@@ -39,6 +39,11 @@ every merged pull request.
   report the coverage of the change.
 
 ### Changed
+- **TypeScript and JavaScript calls resolve through imports** (#65): a
+  call links to the function its file imports instead of any same-named
+  function, through named, aliased, default and namespace imports,
+  re-exports and barrels, and CommonJS `require`. Calls that don't go
+  through a resolvable import still match by name.
 - **Blast radius:** the full caller graph is replaced by a view that
   goes by distance. Direct callers are listed first with their test
   status and coverage, and untested ones are flagged. Callers further out

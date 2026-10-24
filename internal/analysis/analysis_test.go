@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -31,6 +32,8 @@ func testLang(p string) string {
 		return "go"
 	case ".ts", ".tsx":
 		return "typescript"
+	case ".js":
+		return "javascript"
 	case ".py":
 		return "python"
 	case ".java":
@@ -894,5 +897,189 @@ pub fn run() {
 	// check's lines belong to check, not to the expression-bodied validate.
 	if hasEdge(ix, "h:Store.kt#Store.total", "h:Store.kt#Store.check", EdgeCall) {
 		t.Error("total's extent ran into the next function")
+	}
+}
+
+// Calls resolve through the calling file's imports before falling back to
+// name matching (#65).
+func TestGenericTypeScriptImports(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"src/a/fmt.ts": `export function format(x: number) { return String(x) }
+`,
+		"src/b/fmt.ts": `export function format(s: string) { return s.trim() }
+`,
+		"src/a/use.ts": `import { format } from '../b/fmt'
+
+export function show() {
+  return format(" x ")
+}
+`,
+		"src/b/use.ts": `import { format as fmt } from '../a/fmt'
+
+export function show() {
+  return fmt(1)
+}
+`,
+		"src/save.ts": `export default async function persist(data: unknown) {}
+`,
+		"src/api/list.ts": `export function list() { return [] }
+function hidden() {}
+export { hidden as reveal }
+`,
+		"src/api/index.ts": `export * from './list'
+export { default as store } from '../save'
+export * as raw from './list'
+`,
+		"src/store.ts": `export class Store {
+  static create() { return new Store() }
+}
+export const api = {
+  remove(id: string) {},
+}
+`,
+		"src/cycle/x.ts": `export * from './y'
+`,
+		"src/cycle/y.ts": `export * from './x'
+`,
+		"src/legacy.js": `function load() {}
+function save() {}
+module.exports = { load, store: save }
+`,
+		"src/main.ts": `import persist from './save'
+import * as api from './api'
+import { store, raw, reveal } from './api'
+import { Store, api as objs } from './store'
+import { ghost } from './cycle/x'
+const { load, store: put } = require('./legacy')
+
+export function main() {
+  persist(1)
+  api.list()
+  store(2)
+  raw.list()
+  reveal()
+  Store.create()
+  objs.remove("id")
+  ghost()
+  load()
+  put()
+}
+
+function list() {}
+`,
+	})
+	ix := Build(root, files, testLang)
+	edges := []struct{ from, to string }{
+		{"h:src/a/use.ts#show", "h:src/b/fmt.ts#format"},
+		{"h:src/b/use.ts#show", "h:src/a/fmt.ts#format"},
+		{"h:src/main.ts#main", "h:src/save.ts#persist"},
+		{"h:src/main.ts#main", "h:src/api/list.ts#list"},
+		{"h:src/main.ts#main", "h:src/api/list.ts#hidden"},
+		{"h:src/main.ts#main", "h:src/store.ts#Store.create"},
+		{"h:src/main.ts#main", "h:src/store.ts#api.remove"},
+		{"h:src/main.ts#main", "h:src/legacy.js#load"},
+		{"h:src/main.ts#main", "h:src/legacy.js#save"},
+	}
+	for _, e := range edges {
+		if !hasEdge(ix, e.from, e.to, EdgeCall) {
+			t.Errorf("%s should call %s: %+v", e.from, e.to, ix.Callees(e.from))
+		}
+	}
+	// Same-named functions: each importer reaches only what it imports.
+	if hasEdge(ix, "h:src/a/use.ts#show", "h:src/a/fmt.ts#format", EdgeCall) || hasEdge(ix, "h:src/b/use.ts#show", "h:src/b/fmt.ts#format", EdgeCall) {
+		t.Error("a call linked to the same-named function it doesn't import")
+	}
+	// api.list() goes through the namespace import, not main.ts's own list.
+	if hasEdge(ix, "h:src/main.ts#main", "h:src/main.ts#list", EdgeCall) {
+		t.Errorf("api.list() linked to the local list: %+v", ix.Callees("h:src/main.ts#main"))
+	}
+}
+
+func TestJSNameList(t *testing.T) {
+	got := jsNameList(" a, type B, c as d, default as e, , 1x as y ", " as ")
+	want := map[string]string{"a": "a", "B": "B", "c": "d", "default": "e"}
+	if len(got) != len(want) {
+		t.Fatalf("jsNameList = %v", got)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("jsNameList[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
+func TestJSBinderSkipsComments(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"src/a.ts": `export function go() {}
+`,
+		"src/b.ts": `export function go() {}
+`,
+		"src/main.ts": `// import { go } from './a'
+/* import { go } from './a' */
+import { go } from './b'
+
+export function run() { go() }
+`,
+	})
+	ix := Build(root, files, testLang)
+	if !hasEdge(ix, "h:src/main.ts#run", "h:src/b.ts#go", EdgeCall) || hasEdge(ix, "h:src/main.ts#run", "h:src/a.ts#go", EdgeCall) {
+		t.Errorf("run's callees = %+v", ix.Callees("h:src/main.ts#run"))
+	}
+}
+
+// Wide trees of barrels resolve, and are walked once per name rather than
+// once per path, which for a name none of them exports would be
+// width^depth lookups (#65).
+func TestGenericTypeScriptBarrelFanOut(t *testing.T) {
+	const width, depth = 8, 8
+	tree := map[string]string{
+		"src/main.ts":     "import { missing, target } from './l0/f0'\n\nexport function run() {\n  missing()\n  target()\n}\n",
+		"src/lib/leaf.ts": "export function target() {}\n",
+		// Name matching alone would pick this one, in main.ts's directory.
+		"src/decoy.ts": "export function target() {}\n",
+	}
+	for d := range depth {
+		for w := range width {
+			var sb strings.Builder
+			for n := range width {
+				next := fmt.Sprintf("../l%d/f%d", d+1, n)
+				if d == depth-1 {
+					next = "../lib/leaf"
+				}
+				fmt.Fprintf(&sb, "export * from '%s'\n", next)
+			}
+			tree[fmt.Sprintf("src/l%d/f%d.ts", d, w)] = sb.String()
+		}
+	}
+	root, files := writeTree(t, tree)
+	ix := Build(root, files, testLang)
+	if !hasEdge(ix, "h:src/main.ts#run", "h:src/lib/leaf.ts#target", EdgeCall) {
+		t.Errorf("run's callees = %+v", ix.Callees("h:src/main.ts#run"))
+	}
+}
+
+// A miss cut off by the re-export hop limit isn't remembered: the same
+// barrel reached by a shorter path still resolves (#65).
+func TestGenericTypeScriptHopLimitNotMemoized(t *testing.T) {
+	tree := map[string]string{
+		"src/lib/leaf.ts": "export function target() {}\n",
+		// Name matching alone would pick this one, in main.ts's directory.
+		"src/decoy.ts": "export function target() {}\n",
+		"src/main.ts":  "import { target } from './hub'\n\nexport function run() { target() }\n",
+		"src/hub.ts":   "export * from './c0'\nexport * from './mid'\n",
+		"src/mid.ts":   "export * from './lib/leaf'\n",
+	}
+	// hub (hop 0) → c0 … c6 → mid at the last allowed hop, so leaf is cut off.
+	for i := range maxExportHops - 1 {
+		next := fmt.Sprintf("./c%d", i+1)
+		if i == maxExportHops-2 {
+			next = "./mid"
+		}
+		tree[fmt.Sprintf("src/c%d.ts", i)] = "export * from '" + next + "'\n"
+	}
+	root, files := writeTree(t, tree)
+	ix := Build(root, files, testLang)
+	if !hasEdge(ix, "h:src/main.ts#run", "h:src/lib/leaf.ts#target", EdgeCall) {
+		t.Errorf("run's callees = %+v", ix.Callees("h:src/main.ts#run"))
 	}
 }

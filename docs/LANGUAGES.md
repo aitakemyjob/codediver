@@ -25,9 +25,10 @@ radius.
 - Per-language patterns run over the source after comments and string
   contents are blanked out. They find definitions, where each one ends
   (braces, indentation or `end`), imports, and calls.
-- Calls are matched **by name**: `name(` or `receiver.name(`. Imports are
-  used for the dependency graph, but not yet to decide which definition a
-  call means.
+- Calls are found as `name(` or `receiver.name(`. In TypeScript and
+  JavaScript, a call is first resolved through the calling file's imports
+  (see below). Otherwise, and in every other language, it is matched **by
+  name**.
 - When several definitions share a name, CodeDiver prefers:
   1. a method of the same class, for `this.`/`self.` calls
   2. a definition in the same file
@@ -63,7 +64,7 @@ It **does not** guarantee that:
 | | Symbols | Call graph, trace, blast radius | Control flow | Dependencies | Tests found | Coverage |
 |---|---|---|---|---|---|---|
 | **Go** | type-checked | type-checked, with interface dispatch | full graph | packages and external modules | `go test`, subtests, table cases | coverprofile; per-test runs |
-| **TypeScript, JavaScript** | lexical | name match `~`; JSX renders count as calls | — | directories, from relative imports | Vitest, Jest, Mocha, Playwright, node:test | LCOV |
+| **TypeScript, JavaScript** | lexical | through imports, else name match `~`; JSX renders count as calls | — | directories, from relative imports | Vitest, Jest, Mocha, Playwright, node:test | LCOV |
 | **Python** | lexical | name match `~` | — | directories, from imports | pytest, unittest | LCOV, Cobertura; per-test runs (pytest) |
 | **Java, Kotlin, Scala** | lexical | name match `~` | — | directories, from imports | JUnit | JaCoCo, Cobertura |
 | **C#** | lexical | name match `~` | — | directories, from `using` | xUnit, NUnit, MSTest | Cobertura |
@@ -118,6 +119,24 @@ a limit of how the analysis works. Deeper analysis is tracked in [#18].
 
 ### TypeScript and JavaScript
 
+How calls resolve through imports:
+- A call to an imported name links to the definition it imports, even when
+  other files define the same name: named (`import { format }`), aliased
+  (`import { format as fmt }`), default (`import save from`) and
+  namespace (`import * as api`, then `api.list()`) imports, and CommonJS
+  `const { load } = require('./x')` and `const x = require('./x')`.
+- Re-exports and barrels are followed to the defining file (`export { x }
+  from`, `export * from`, `export { default as Button } from`), up to
+  8 hops, as are local export lists (`export { a as b }`) and
+  `module.exports = { … }`.
+- Static methods of an imported class (`Store.create()`) and methods of an
+  imported object literal (`api.remove()`) link to that file's member.
+- When the import doesn't lead to a definition in the repository (a
+  package, a path alias, an export CodeDiver can't read), the call falls
+  back to name matching.
+- These edges are still marked `~`: a local variable that shadows an
+  imported name isn't noticed.
+
 How definitions are named:
 - **Object literals:** methods and function properties of an object
   literal assigned to a name or default-exported (Workers'
@@ -136,8 +155,6 @@ Edges that are wrong or missing:
 - Functions passed as values get no edge: `items.map(format)`,
   `promise.then(render)`, `emitter.on('done', notify)`. React components
   passed as props are an exception. *[#68]*
-- **Imports that rename:** aliased imports (`import { a as b }`) and
-  namespace imports (`ns.fn()`) only resolve by the called name. *[#65]*
 - **Module-level code:** calls outside any function, like `render(<App />)`
   in `main.tsx`, have no caller, so `App` looks uncalled. *[#69]*
 - **Framework wiring:** decorators like `@Get()` read as calls to a symbol
@@ -200,7 +217,6 @@ Dependencies:
   on a path.
 
 [#18]: https://github.com/aitakemyjob/codediver/issues/18
-[#65]: https://github.com/aitakemyjob/codediver/issues/65
 [#66]: https://github.com/aitakemyjob/codediver/issues/66
 [#67]: https://github.com/aitakemyjob/codediver/issues/67
 [#68]: https://github.com/aitakemyjob/codediver/issues/68

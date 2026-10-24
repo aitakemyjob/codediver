@@ -84,11 +84,11 @@ var examples = []exampleCase{
 		validate: "Validate", file: "order/order.go", edit: proposals.Edit{Old: "if o.Qty > 1000 {", New: "if o.Qty > 500 {"}, caller: "Handler.CreateOrder", callerStatus: StatusCaller,
 	},
 	{
-		name: "ts-react", framework: "vitest", tests: 5, covFiles: 8,
+		name: "ts-react", framework: "vitest", tests: 5, covFiles: 15,
 		funcs: map[string]fnExpect{
 			"validate":    {cover: "partial", tested: true, callers: 1}, // from OrderForm's submit
-			"total":       {cover: "full", tested: true, callers: 2},    // inside OrderSummary's JSX, and Cart.subtotal
-			"formatCents": {cover: "full", tested: true, callers: 2},    // OrderSummary and summarize
+			"total":       {cover: "full", tested: true, callers: 4},    // OrderSummary's JSX, Cart.subtotal, receipt's format, and grandTotal as orderTotal
+			"formatCents": {cover: "full", tested: true, callers: 5},    // OrderSummary, summarize, both formats and ReceiptPage
 			"unitPrice":   {cover: "full", tested: true, callers: 1},
 			"legacyTotal": {cover: "partial", callers: 0}, // the declaration line runs on import
 			// Components rendered only through JSX in App.
@@ -100,7 +100,7 @@ var examples = []exampleCase{
 			"Cart.reset":        {cover: "full", tested: true, callers: 2}, // through the constructor
 			"Cart.clear":        {cover: "partial", callers: 0},            // only passed to onClick
 			"GiftCart.subtotal": {cover: "full", tested: true, callers: 0},
-			"Cart.subtotal":     {cover: "full", tested: true, callers: 2}, // super.subtotal() and cart?.subtotal()
+			"Cart.subtotal":     {cover: "full", tested: true, callers: 3}, // super.subtotal(), cart?.subtotal() and cart/format.ts
 			// An object literal's methods and an anonymous default export.
 			"ordersApi.create": {cover: "0", callers: 0},
 			"default":          {cover: "0", callers: 0},
@@ -407,6 +407,47 @@ func TestExampleTypeScriptConstructs(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("multi-line import missing: %+v", ix.PkgEdges)
+	}
+}
+
+// TestExampleTypeScriptImports pins calls the ts-react receipt page and
+// cart page make through imports (#65): each links to the definition its
+// file imports, even under another name or through a barrel, and never to
+// the same-named function in another module.
+func TestExampleTypeScriptImports(t *testing.T) {
+	s, rt := openExample(t, "ts-react")
+	ix, err := s.Index(context.Background(), rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := func(file, name string) string { return "h:src/" + file + "#" + name }
+	receipt, cartPage := id("pages/ReceiptPage.tsx", "ReceiptPage"), id("pages/CartPage.tsx", "default")
+	calls := func(from, to string) bool {
+		for _, c := range ix.Callees(from) {
+			if c.To == to {
+				return true
+			}
+		}
+		return false
+	}
+	for _, e := range []struct{ from, to, how string }{
+		// Name matching happens to get these two right as well: the two
+		// formats are equally far from pages/, and grandTotal is unique.
+		{cartPage, id("cart/format.ts", "format"), "named import of one of two same-named functions"},
+		{receipt, id("receipt/totals.ts", "grandTotal"), "namespace import through export *"},
+		// These need the import: name matching picks the format beside
+		// cartLine, and finds nothing called formatLine, emit or orderTotal.
+		{id("receipt/summary.ts", "cartLine"), id("cart/format.ts", "format"), "named import, with the other format in the caller's own folder"},
+		{receipt, id("receipt/format.ts", "format"), "namespace import, barrel rename (formatLine)"},
+		{receipt, id("receipt/print.ts", "printReceipt"), "default import under another name (emit)"},
+		{id("receipt/totals.ts", "grandTotal"), id("order.ts", "total"), "aliased import (orderTotal)"},
+	} {
+		if !calls(e.from, e.to) {
+			t.Errorf("%s: %s should call %s: %+v", e.how, e.from, e.to, ix.Callees(e.from))
+		}
+	}
+	if calls(cartPage, id("receipt/format.ts", "format")) || calls(receipt, id("cart/format.ts", "format")) || calls(id("receipt/summary.ts", "cartLine"), id("receipt/format.ts", "format")) {
+		t.Errorf("a call linked to the same-named format it doesn't import")
 	}
 }
 
