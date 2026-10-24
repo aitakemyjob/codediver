@@ -547,6 +547,7 @@ func (a *goAnalyzer) symbolForFunc(fn *types.Func) string {
 // outgoing edges.
 func (a *goAnalyzer) collectCalls(pkg *goPkg) {
 	for _, f := range pkg.files {
+		a.collectInitializers(f)
 		for _, decl := range f.Decls {
 			d, ok := decl.(*ast.FuncDecl)
 			if !ok || d.Body == nil {
@@ -566,10 +567,35 @@ func (a *goAnalyzer) collectCalls(pkg *goPkg) {
 	}
 }
 
+// collectInitializers records the calls in a file's package-level var
+// initializers (`var x = compute()`), which run when the package is
+// initialized, as made by the file's <module> symbol. The symbol is added
+// only when there are such calls.
+func (a *goAnalyzer) collectInitializers(f *ast.File) {
+	file, _ := a.relFile(f.Pos())
+	end := a.fset.Position(f.End()).Line
+	mod := newModuleSymbol(file, "go", end)
+	before := len(a.ix.Edges)
+	for _, decl := range f.Decls {
+		gd, ok := decl.(*ast.GenDecl)
+		if !ok || gd.Tok != token.VAR {
+			continue
+		}
+		for _, spec := range gd.Specs {
+			for _, v := range spec.(*ast.ValueSpec).Values {
+				a.walkBody(mod.ID, v)
+			}
+		}
+	}
+	if len(a.ix.Edges) > before {
+		a.ix.Symbols[mod.ID] = mod
+	}
+}
+
 // walkBody records the edges leaving one function body: calls (including
 // go and defer), calls into external packages, and functions or methods
 // referenced as values (callbacks, handlers).
-func (a *goAnalyzer) walkBody(from string, body *ast.BlockStmt) {
+func (a *goAnalyzer) walkBody(from string, body ast.Node) {
 	callFuns := map[ast.Expr]EdgeKind{}
 	ast.Inspect(body, func(n ast.Node) bool {
 		switch s := n.(type) {

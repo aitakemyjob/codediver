@@ -94,7 +94,7 @@ every language and the known gaps, see
 | `super.subtotal()` and `cart?.subtotal()` | n/a | ✓ (`super` goes to the `extends` class) | n/a | n/a |
 | Multi-line `import {…} from` as a dependency | n/a | ✓ | n/a | n/a |
 | Calls through imports: two `format`s told apart (`receipt/summary.ts` uses the cart's, not the one beside it), `total as orderTotal`, `import * as receipt` through a barrel (`formatLine`, `export *`), a default import as `emit` | ✓ type-aware | ✓ (`ReceiptPage`, `cartLine`, `grandTotal`) | ✓ `orders/receipt`: `heading` uses `text.py`'s `format`, not the one beside it; `format as dollars`; `import orders.order as pricing`; `from . import receipt` with names re-exported by `__init__.py` (`line`, `from .totals import *`) | n/a |
-| Calls from module-level code (`render(<App />)` in `main.tsx`) | n/a | ✗: not inside a function, so `App` has no caller | ✗ | n/a |
+| Calls from module-level code (`render(<App />)` in `main.tsx`) | ✓ `var ErrX = errors.New(…)`: the file's `<module>` calls it | ✓ `main.tsx <module>` calls `App` | n/a (none in the example) | n/a |
 | Same method name on unrelated types | ✓ type-aware | built-in names (`get`, `push`…) only link when the receiver looks like the class | same as TypeScript (`store.get` → `MemoryStore.get`, not `data.get`) | name matching |
 | Coverage import | ✓ coverprofile | ✓ LCOV | ✓ LCOV | ✓ JaCoCo |
 | Testability hints | ✓ | ✓ | ✓ | ✓ |
