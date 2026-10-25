@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, Bot, Code2, GitFork, Route, Sparkles } from 'lucide-react';
 import { api } from '../lib/api';
 import { actions } from '../lib/actions';
 import { useStore } from '../lib/store';
 import type { Explanation, Flow, Param } from '../lib/types';
+import { FlowTrail } from '../lib/flowTrail';
 import { FlowCanvas } from '../graph/FlowCanvas';
 import { CopyButton, ErrorBox, Markdown, Spinner, useAsync } from '../components/ui';
 import type { ViewProps } from './ViewHost';
@@ -31,6 +32,26 @@ export function stepNodes(flow: Flow, ex?: Explanation): { notes: Map<string, { 
   return { notes, byStep };
 }
 
+/** Breadcrumbs from the function into the closure being shown. */
+function FlowCrumbs({ trail, onBack }: { trail: FlowTrail; onBack: (depth: number) => void }) {
+  const crumbs = trail.crumbs();
+  if (crumbs.length < 2) return null;
+  return (
+    <span className="flow-crumbs mono">
+      {crumbs.map((c, i) => (
+        <span key={c.depth}>
+          {i > 0 && <span className="faint">›</span>}
+          {i < crumbs.length - 1 ? (
+            <button type="button" onClick={() => onBack(c.depth)}>{c.label}</button>
+          ) : (
+            <span className="here">{c.label}</span>
+          )}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 /** One input or output with the agent's description. */
 function ParamCard({ p, desc, receiver }: { p: Param; desc?: string; receiver?: boolean }) {
   return (
@@ -55,8 +76,12 @@ export default function FlowView({ tab }: ViewProps) {
   const ex = s.session.explanations.find((x) => x.symbol === symbol || x.symbol === res.data?.symbol.id);
   const [selected, setSelected] = useState<string>();
   const [step, setStep] = useState<number>();
-  const flow = ex?.flow ?? res.data?.flow;
+  const rootFlow = ex?.flow ?? res.data?.flow;
   const sym = res.data?.symbol ?? ex?.sym;
+  const [trail, setTrail] = useState<FlowTrail>();
+  // A new function (or a rebuilt flow) starts back at its top level.
+  useEffect(() => setTrail(rootFlow ? new FlowTrail(rootFlow) : undefined), [rootFlow]);
+  const flow = trail?.root === rootFlow ? trail?.current() : rootFlow;
   const { notes, byStep } = useMemo(() => (flow ? stepNodes(flow, ex) : { notes: new Map(), byStep: new Map() }), [flow, ex]);
   const highlight = step !== undefined ? byStep.get(step) : undefined;
 
@@ -75,6 +100,7 @@ export default function FlowView({ tab }: ViewProps) {
     <>
       <div className="toolbar">
         <span className="title mono">{sym.qualified}</span>
+        {trail && <FlowCrumbs trail={trail} onBack={(d) => setTrail(trail.back(d))} />}
         <span className="faint mono" style={{ fontSize: 11.5 }}>{flow.file}:{flow.line}</span>
         {sym.complexity ? <span className={`badge ${sym.complexity > 10 ? 'warn' : ''}`}>complexity {sym.complexity}</span> : null}
         <span className="badge">{flow.nodes.length - 2} blocks</span>
@@ -92,7 +118,7 @@ export default function FlowView({ tab }: ViewProps) {
         </div>
         <div className="flowarrow"><ArrowRight size={18} /></div>
         <div className="fn">
-          <b>{sym.name}</b>
+          <b>{flow === rootFlow ? sym.name : flow.name}</b>
           <small className="mono" style={{ maxWidth: 320, whiteSpace: 'normal', wordBreak: 'break-word' }}>{flow.signature}</small>
         </div>
         <div className="flowarrow"><ArrowRight size={18} /></div>
@@ -104,7 +130,15 @@ export default function FlowView({ tab }: ViewProps) {
       </div>
       <div className="split">
         <div className="main">
-          <FlowCanvas flow={flow} notes={notes} selected={selected} highlight={highlight} onSelect={setSelected} onOpen={openNode} />
+          <FlowCanvas
+            flow={flow}
+            notes={notes}
+            selected={selected}
+            highlight={highlight}
+            onSelect={setSelected}
+            onOpen={openNode}
+            onClosure={trail ? (nodeId, i) => setTrail(trail.open(nodeId, i)) : undefined}
+          />
         </div>
         <div className="side right" style={{ width: 340 }}>
           {ex ? (

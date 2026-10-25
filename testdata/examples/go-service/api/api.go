@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
+	"strings"
 
 	"example.com/orders/notify"
 	"example.com/orders/order"
@@ -46,6 +48,36 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, o)
+}
+
+// ListOrders returns the orders named in ?ids=a,b,c, largest quantity
+// first.
+func (h *Handler) ListOrders(w http.ResponseWriter, r *http.Request) {
+	orders, err := loadAll(h.store, strings.Split(r.URL.Query().Get("ids"), ","))
+	if errors.Is(err, store.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	sort.Slice(orders, func(i, j int) bool {
+		if orders[i].Qty != orders[j].Qty {
+			return orders[i].Qty > orders[j].Qty
+		}
+		return orders[i].ID < orders[j].ID
+	})
+	writeJSON(w, http.StatusOK, orders)
+}
+
+// loadAll loads every ID through a generic repository.
+func loadAll(repo store.Repo[order.Order], ids []string) ([]order.Order, error) {
+	out := make([]order.Order, 0, len(ids))
+	for _, id := range ids {
+		o, err := repo.Get(id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, o)
+	}
+	return out, nil
 }
 
 // writeJSON writes v as a JSON response.

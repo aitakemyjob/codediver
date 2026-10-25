@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/aitakemyjob/codediver/internal/analysis"
 	"github.com/aitakemyjob/codediver/internal/config"
 	"github.com/aitakemyjob/codediver/internal/proposals"
 )
@@ -491,6 +492,58 @@ func TestExamplePythonImports(t *testing.T) {
 	}
 	if calls(id("receipt/heading.py", "heading"), line) {
 		t.Errorf("heading linked to the format beside it, which it doesn't import")
+	}
+}
+
+// TestExampleGoFlow pins what go-service shows of Go control flow and
+// generics (#74): a call through store.Repo[order.Order] dispatches to
+// Memory.Get, ListOrders's sort.Slice closure has its own flow, and
+// notify.Send's goto retry jumps back to its label.
+func TestExampleGoFlow(t *testing.T) {
+	s, rt := openExample(t, "go-service")
+	ctx := context.Background()
+	ix, err := s.Index(ctx, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	get, mem := "go:(example.com/orders/store.Repo[T any]).Get", "go:(*example.com/orders/store.Memory).Get"
+	dispatches := false
+	for _, e := range ix.Callees(get) {
+		dispatches = dispatches || e.To == mem && e.Kind == analysis.EdgeDispatch
+	}
+	if !dispatches {
+		t.Errorf("Repo.Get should dispatch to Memory.Get: %+v", ix.Callees(get))
+	}
+
+	fl, _, err := s.FunctionFlow(ctx, rt, "go:(*example.com/orders/api.Handler).ListOrders")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lits []*analysis.Flow
+	for _, n := range fl.Nodes {
+		lits = append(lits, n.Closures...)
+	}
+	if len(lits) != 1 {
+		t.Fatalf("ListOrders closures = %d, want the sort.Slice one", len(lits))
+	}
+	kinds := map[analysis.FlowNodeKind]int{}
+	for _, n := range lits[0].Nodes {
+		kinds[n.Kind]++
+	}
+	if lits[0].Signature != "func(i, j int) bool" || kinds[analysis.FlowCond] != 1 || kinds[analysis.FlowReturn] != 2 {
+		t.Errorf("sort closure = %s %v", lits[0].Signature, kinds)
+	}
+
+	fl, _, err = s.FunctionFlow(ctx, rt, "go:example.com/orders/notify.Send")
+	if err != nil {
+		t.Fatal(err)
+	}
+	back := false
+	for _, e := range fl.Edges {
+		back = back || e.Label == "goto" && e.Back
+	}
+	if !back {
+		t.Errorf("goto retry should jump back to its label: %+v", fl.Edges)
 	}
 }
 

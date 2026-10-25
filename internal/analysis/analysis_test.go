@@ -1244,3 +1244,169 @@ func countKind(ix *Index, k SymbolKind) int {
 	}
 	return n
 }
+
+// Calls through an instantiated generic interface dispatch to the
+// concrete types that implement that instantiation, generic or not (#74).
+func TestGoGenericDispatch(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"go.mod": "module example.com/gen\n\ngo 1.22\n",
+		"repo.go": `package gen
+
+type Repo[T any] interface {
+	Get(id int) T
+}
+
+type intRepo struct{}
+
+func (intRepo) Get(id int) int { return id }
+
+type memRepo[T any] struct{ items map[int]T }
+
+func (m *memRepo[T]) Get(id int) T { return m.items[id] }
+
+type strRepo struct{}
+
+func (strRepo) Get(id int) string { return "" }
+
+func Load(r Repo[int]) int { return r.Get(1) }
+
+func Use() {
+	Load(intRepo{})
+	var m Repo[int] = &memRepo[int]{}
+	m.Get(2)
+}
+`,
+	})
+	ix := Build(root, files, testLang)
+	get := "go:(example.com/gen.Repo[T any]).Get"
+	if !hasEdge(ix, "go:example.com/gen.Load", get, EdgeCall) {
+		t.Fatalf("Load should call Repo.Get: %+v", ix.Callees("go:example.com/gen.Load"))
+	}
+	for _, to := range []string{"go:(example.com/gen.intRepo).Get", "go:(*example.com/gen.memRepo[T]).Get"} {
+		if !hasEdge(ix, get, to, EdgeDispatch) {
+			t.Errorf("Repo.Get should dispatch to %s: %+v", to, ix.Callees(get))
+		}
+	}
+	// strRepo implements Repo[string], which the code never uses.
+	if hasEdge(ix, get, "go:(example.com/gen.strRepo).Get", EdgeDispatch) {
+		t.Errorf("dispatch to a type that doesn't implement Repo[int]: %+v", ix.Callees(get))
+	}
+}
+
+// goto jumps reach their label's statement, and t.Fatal-style calls on
+// the test's own *testing.T end it (#74).
+func TestGoFuncFlowGotoAndTestStops(t *testing.T) {
+	root, _ := writeTree(t, map[string]string{"f_test.go": `package f
+
+import "testing"
+
+func G(n int) int {
+	i := 0
+retry:
+	i++
+	if i < n {
+		goto retry
+	}
+	if n < 0 {
+		goto done
+	}
+	for j := 0; j < n; j++ {
+		continue
+	}
+done:
+	return i
+}
+
+func TestX(t *testing.T) {
+	if t == nil {
+		t.Fatalf("no t")
+	}
+	got := G(3)
+	if got != 3 {
+		t.Errorf("got %d", got)
+	}
+	other.Fatal("not a test stop")
+}
+`})
+	fl, err := GoFuncFlow(root, "f_test.go", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]FlowNode{}
+	for _, n := range fl.Nodes {
+		byID[n.ID] = n
+	}
+	gotos := map[string]FlowEdge{}
+	for _, e := range fl.Edges {
+		if e.Label == "goto" {
+			gotos[byID[e.From].Label] = e
+		}
+	}
+	if e, ok := gotos["goto retry"]; !ok || !e.Back || byID[e.To].Line != 8 {
+		t.Errorf("goto retry = %+v (to %+v)", e, byID[e.To])
+	}
+	if e, ok := gotos["goto done"]; !ok || e.Back || byID[e.To].Kind != FlowReturn {
+		t.Errorf("goto done = %+v (to %+v)", e, byID[e.To])
+	}
+
+	fl, err = GoFuncFlow(root, "f_test.go", 23)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stops []string
+	for _, n := range fl.Nodes {
+		if n.Kind == FlowPanic {
+			stops = append(stops, n.Label)
+		}
+	}
+	if len(stops) != 1 || stops[0] != `t.Fatalf("no t")` {
+		t.Errorf("test stops = %q", stops)
+	}
+}
+
+// Function literals get their own flow on the node that holds them, built
+// the same way: t.Fatal inside a t.Run closure ends the closure (#74).
+func TestGoFuncFlowClosures(t *testing.T) {
+	root, _ := writeTree(t, map[string]string{"c_test.go": `package c
+
+import "testing"
+
+func TestC(t *testing.T) {
+	t.Run("sub", func(t *testing.T) {
+		if t == nil {
+			t.Fatal("x")
+		}
+		inner := func() { other() }
+		inner()
+	})
+	defer func() { cleanup() }()
+}
+`})
+	fl, err := GoFuncFlow(root, "c_test.go", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var lits []*Flow
+	for _, n := range fl.Nodes {
+		lits = append(lits, n.Closures...)
+	}
+	if len(lits) != 2 || lits[0].Line != 6 || lits[1].Line != 13 {
+		t.Fatalf("closures = %+v", lits)
+	}
+	sub := lits[0]
+	if sub.Signature != "func(t *testing.T)" || len(sub.Inputs) != 1 {
+		t.Errorf("closure header = %+v", sub)
+	}
+	var stop bool
+	var nested int
+	for _, n := range sub.Nodes {
+		stop = stop || n.Kind == FlowPanic && n.Label == `t.Fatal("x")`
+		nested += len(n.Closures)
+	}
+	if !stop || nested != 1 {
+		t.Errorf("closure flow: stop=%v nested=%d nodes=%+v", stop, nested, sub.Nodes)
+	}
+	if len(lits[1].Nodes) < 3 || lits[1].Nodes[2].Calls[0] != "cleanup" {
+		t.Errorf("deferred closure = %+v", lits[1].Nodes)
+	}
+}

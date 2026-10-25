@@ -220,6 +220,8 @@ export interface FlowNode {
   line?: number;
   endLine?: number;
   calls?: string[];
+  /** Control-flow graphs of the function literals in this node's code. */
+  closures?: Flow[];
 }
 
 export interface FlowEdge {

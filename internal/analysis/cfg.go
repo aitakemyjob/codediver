@@ -35,6 +35,9 @@ type FlowNode struct {
 	Line    int          `json:"line,omitempty"`
 	EndLine int          `json:"endLine,omitempty"`
 	Calls   []string     `json:"calls,omitempty"`
+	// Closures are the control-flow graphs of the function literals
+	// written in this node's code, in source order.
+	Closures []*Flow `json:"closures,omitempty"`
 }
 
 type FlowEdge struct {
@@ -71,13 +74,27 @@ type breakCtx struct {
 type cfgBuilder struct {
 	fset   *token.FileSet
 	src    []byte
+	file   string
 	nodes  []FlowNode
 	edges  []FlowEdge
 	exit   string
 	stack  []*breakCtx
 	label  string // pending label for the next loop/switch
 	nextID int
+	// labels maps a statement label to the first node of its statement,
+	// and gotos are the jumps waiting for their label's node.
+	labels map[string]string
+	gotos  []pend
+	// testers are the function's *testing.T/B/F and testing.TB parameters,
+	// whose Fatal, FailNow and Skip methods end the function.
+	testers map[string]bool
 }
+
+// testingTypes are the parameter types whose stop methods exit a test.
+var testingTypes = map[string]bool{"*testing.T": true, "*testing.B": true, "*testing.F": true, "testing.TB": true}
+
+// testStops are the testing methods that stop the test function.
+var testStops = map[string]bool{"Fatal": true, "Fatalf": true, "FailNow": true, "Skip": true, "Skipf": true, "SkipNow": true}
 
 // GoFuncFlow builds the control-flow graph of the Go function declared in
 // file that contains line.
@@ -112,32 +129,62 @@ func GoFuncFlow(root, file string, line int) (*Flow, error) {
 // buildFlow constructs the control-flow graph of fn, including its
 // signature, receiver, inputs and outputs.
 func buildFlow(fset *token.FileSet, src []byte, file string, fn *ast.FuncDecl) *Flow {
-	b := &cfgBuilder{fset: fset, src: src}
-	fl := &Flow{
-		Name:    fn.Name.Name,
-		File:    file,
-		Line:    fset.Position(fn.Pos()).Line,
-		EndLine: fset.Position(fn.End()).Line,
-	}
-	sigEnd := fn.Type.End()
-	fl.Signature = strings.TrimSpace(b.text(fn.Pos(), sigEnd))
-	fl.Inputs = b.fields(fn.Type.Params)
-	fl.Outputs = b.fields(fn.Type.Results)
+	b := newCFGBuilder(fset, src, file)
+	fl := b.header(fn.Name.Name, fn.Pos(), fn.End(), fn.Type)
 	if fn.Recv != nil && len(fn.Recv.List) > 0 {
 		r := b.fields(fn.Recv)
 		if len(r) > 0 {
 			fl.Receiver = &r[0]
 		}
 	}
+	return b.build(fl, fn.Name.Name+"()", fn.Pos(), fn.End(), fn.Body)
+}
 
-	start := b.add(FlowStart, fn.Name.Name+"()", fn.Pos(), fn.Pos())
-	b.exit = b.add(FlowEnd, "end", fn.End(), fn.End())
-	if fn.Body != nil {
-		out := b.stmts(fn.Body.List, []pend{{from: start}})
+// buildLitFlow constructs the control-flow graph of a function literal (a
+// closure) in file.
+func buildLitFlow(fset *token.FileSet, src []byte, file string, lit *ast.FuncLit) *Flow {
+	b := newCFGBuilder(fset, src, file)
+	name := fmt.Sprintf("func literal (L%d)", fset.Position(lit.Pos()).Line)
+	return b.build(b.header(name, lit.Pos(), lit.End(), lit.Type), "func()", lit.Pos(), lit.End(), lit.Body)
+}
+
+// newCFGBuilder returns a builder for one function's graph in file.
+func newCFGBuilder(fset *token.FileSet, src []byte, file string) *cfgBuilder {
+	return &cfgBuilder{fset: fset, src: src, file: file, labels: map[string]string{}, testers: map[string]bool{}}
+}
+
+// header fills a flow's name, position, signature, inputs and outputs, and
+// notes the testing parameters whose stop methods exit the function.
+func (b *cfgBuilder) header(name string, pos, end token.Pos, typ *ast.FuncType) *Flow {
+	fl := &Flow{
+		Name:    name,
+		File:    b.file,
+		Line:    b.fset.Position(pos).Line,
+		EndLine: b.fset.Position(end).Line,
+	}
+	fl.Signature = strings.TrimSpace(b.text(pos, typ.End()))
+	fl.Inputs = b.fields(typ.Params)
+	fl.Outputs = b.fields(typ.Results)
+	for _, p := range fl.Inputs {
+		if testingTypes[p.Type] && p.Name != "" {
+			b.testers[p.Name] = true
+		}
+	}
+	return fl
+}
+
+// build threads body between a start node labeled start and an end node,
+// and stores the graph in fl.
+func (b *cfgBuilder) build(fl *Flow, start string, pos, end token.Pos, body *ast.BlockStmt) *Flow {
+	first := b.add(FlowStart, start, pos, pos)
+	b.exit = b.add(FlowEnd, "end", end, end)
+	if body != nil {
+		out := b.stmts(body.List, []pend{{from: first}})
 		b.connect(out, b.exit)
 	} else {
-		b.connect([]pend{{from: start}}, b.exit)
+		b.connect([]pend{{from: first}}, b.exit)
 	}
+	b.linkGotos()
 	fl.Nodes, fl.Edges = b.nodes, b.edges
 	return fl
 }
@@ -190,6 +237,27 @@ func (b *cfgBuilder) add(kind FlowNodeKind, label string, pos, end token.Pos) st
 	return id
 }
 
+// describe records the calls and closures in n on the node id.
+func (b *cfgBuilder) describe(id string, n ast.Node) {
+	node := b.node(id)
+	node.Calls = append(node.Calls, b.calls(n)...)
+	node.Closures = append(node.Closures, b.closures(n)...)
+}
+
+// closures builds the flows of the function literals in n that aren't
+// nested in another literal (those belong to the outer literal's flow).
+func (b *cfgBuilder) closures(n ast.Node) []*Flow {
+	var out []*Flow
+	ast.Inspect(n, func(x ast.Node) bool {
+		if lit, ok := x.(*ast.FuncLit); ok {
+			out = append(out, buildLitFlow(b.fset, b.src, b.file, lit))
+			return false
+		}
+		return true
+	})
+	return out
+}
+
 // node returns the node with the given ID, or nil.
 func (b *cfgBuilder) node(id string) *FlowNode {
 	for i := range b.nodes {
@@ -237,19 +305,19 @@ func (b *cfgBuilder) stmts(list []ast.Stmt, preds []pend) []pend {
 			// Unreachable code after return/break; still draw it, detached.
 			preds = []pend{}
 		}
-		if isSimple(s) {
+		if b.isSimple(s) {
 			code := oneLine(b.text(s.Pos(), s.End()), 90)
 			if cur != "" && len(preds) == 1 && preds[0].from == cur && preds[0].label == "" {
 				n := b.node(cur)
 				n.Code = append(n.Code, code)
 				n.EndLine = b.fset.Position(s.End()).Line
-				n.Calls = append(n.Calls, b.calls(s)...)
+				b.describe(cur, s)
 				continue
 			}
 			cur = b.add(FlowBlock, "", s.Pos(), s.End())
 			n := b.node(cur)
 			n.Code = []string{code}
-			n.Calls = b.calls(s)
+			b.describe(cur, s)
 			b.connect(preds, cur)
 			preds = []pend{{from: cur}}
 			continue
@@ -262,14 +330,29 @@ func (b *cfgBuilder) stmts(list []ast.Stmt, preds []pend) []pend {
 
 // isSimple reports whether s is a straight-line statement that can be
 // merged into a block node.
-func isSimple(s ast.Stmt) bool {
+func (b *cfgBuilder) isSimple(s ast.Stmt) bool {
 	switch x := s.(type) {
 	case *ast.AssignStmt, *ast.IncDecStmt, *ast.SendStmt, *ast.DeclStmt, *ast.EmptyStmt:
 		return true
 	case *ast.ExprStmt:
-		return !isTerminalCall(x.X)
+		return !isTerminalCall(x.X) && !b.isTestStop(x.X)
 	}
 	return false
+}
+
+// isTestStop reports whether e stops the test: t.Fatal, b.FailNow,
+// tb.Skip and the like on one of the function's testing parameters.
+func (b *cfgBuilder) isTestStop(e ast.Expr) bool {
+	c, ok := e.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	f, ok := c.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	x, ok := f.X.(*ast.Ident)
+	return ok && b.testers[x.Name] && testStops[f.Sel.Name]
 }
 
 // isTerminalCall reports whether e is a call that never returns normally:
@@ -309,9 +392,15 @@ func (b *cfgBuilder) stmt(s ast.Stmt, preds []pend) []pend {
 
 	case *ast.LabeledStmt:
 		b.label = x.Label.Name
-		return b.stmt(x.Stmt, preds)
+		first := b.nextID
+		out := b.stmt(x.Stmt, preds)
+		if b.nextID > first {
+			b.labels[x.Label.Name] = fmt.Sprintf("n%d", first)
+		}
+		b.label = "" // a label on a plain statement belongs to no loop
+		return out
 
-	case *ast.ExprStmt: // terminal call (panic, os.Exit, log.Fatal)
+	case *ast.ExprStmt: // terminal call (panic, os.Exit, log.Fatal, t.Fatal)
 		id := b.add(FlowPanic, oneLine(b.text(x.Pos(), x.End()), 70), x.Pos(), x.End())
 		b.connect(preds, id)
 		b.edges = append(b.edges, FlowEdge{From: id, To: b.exit, Label: "abort"})
@@ -319,27 +408,27 @@ func (b *cfgBuilder) stmt(s ast.Stmt, preds []pend) []pend {
 
 	case *ast.ReturnStmt:
 		id := b.add(FlowReturn, oneLine(b.text(x.Pos(), x.End()), 70), x.Pos(), x.End())
-		b.node(id).Calls = b.calls(x)
+		b.describe(id, x)
 		b.connect(preds, id)
 		b.connect([]pend{{from: id}}, b.exit)
 		return nil
 
 	case *ast.DeferStmt:
 		id := b.add(FlowDefer, oneLine(b.text(x.Pos(), x.End()), 70), x.Pos(), x.End())
-		b.node(id).Calls = b.calls(x.Call)
+		b.describe(id, x.Call)
 		b.connect(preds, id)
 		return []pend{{from: id}}
 
 	case *ast.GoStmt:
 		id := b.add(FlowGo, oneLine(b.text(x.Pos(), x.End()), 70), x.Pos(), x.End())
-		b.node(id).Calls = b.calls(x.Call)
+		b.describe(id, x.Call)
 		b.connect(preds, id)
 		return []pend{{from: id}}
 
 	case *ast.IfStmt:
 		preds = b.simpleInit(x.Init, preds)
 		id := b.add(FlowCond, "if "+oneLine(b.text(x.Cond.Pos(), x.Cond.End()), 70), x.Pos(), x.Cond.End())
-		b.node(id).Calls = b.calls(x.Cond)
+		b.describe(id, x.Cond)
 		b.connect(preds, id)
 		out := b.stmts(x.Body.List, []pend{{from: id, label: "true"}})
 		if x.Else != nil {
@@ -421,13 +510,30 @@ func (b *cfgBuilder) stmt(s ast.Stmt, preds []pend) []pend {
 		}
 		id := b.add(FlowJump, label, x.Pos(), x.End())
 		b.connect(preds, id)
+		if x.Tok == token.GOTO && x.Label != nil {
+			b.gotos = append(b.gotos, pend{from: id, label: x.Label.Name})
+		}
 		return nil
 	}
 	// Anything else: draw as an opaque block.
 	id := b.add(FlowBlock, "", s.Pos(), s.End())
 	b.node(id).Code = []string{oneLine(b.text(s.Pos(), s.End()), 90)}
+	b.describe(id, s)
 	b.connect(preds, id)
 	return []pend{{from: id}}
+}
+
+// linkGotos connects each goto's jump node to the first node of its
+// label's statement; jumps back up the function are back edges.
+func (b *cfgBuilder) linkGotos() {
+	for _, g := range b.gotos {
+		to, ok := b.labels[g.label]
+		if !ok {
+			continue
+		}
+		back := b.node(to).Line <= b.node(g.from).Line
+		b.edges = append(b.edges, FlowEdge{From: g.from, To: to, Label: "goto", Back: back})
+	}
 }
 
 // labelSep returns the separator used when appending to an edge label.

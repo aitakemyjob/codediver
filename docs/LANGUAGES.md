@@ -101,20 +101,25 @@ a limit of how the analysis works. Deeper analysis is tracked in [#18].
   repository aren't linked to implementations. A handler passed to
   `http.Handle` shows no callers for its `ServeHTTP`. *inherent: the
   standard library isn't analyzed*
-- **Generic interfaces:** these get no `dispatch` edges. With
-  `var r Repo[int] = intRepo{}` and `r.Get()`, the trace stops at
-  `Repo.Get`. *[#74]*
+- **Generic interfaces:** `dispatch` edges come from the instantiations
+  the code uses. With `var r Repo[int] = intRepo{}`, `Repo.Get` dispatches
+  to `intRepo.Get` and to generic types instantiated to satisfy
+  `Repo[int]`, but not to a type that only implements `Repo[string]`
+  when nothing uses `Repo[string]`.
 - **Package initializers:** calls in package-level `var` initializers
   (`var x = compute()`) are made by the file's `<module>` (see *Trace
   view* below). `init` functions are functions of their own.
 - **Closures:** calls inside a closure count for the enclosing function, as
   plain calls. `go func() { f() }()` records a call to `f`, not a `go`
   edge.
-- **In the control-flow view** *[#74]*:
-  - closures are opaque blocks
-  - `goto` ends at a jump node without an edge to its label
-  - `t.Fatal` and similar test helpers aren't drawn as exits (`panic`,
-    `os.Exit` and `log.Fatal*` are)
+- **In the control-flow view:**
+  - a block holding a closure has a *closure* chip that opens the
+    closure's own control flow, and agents get it nested under that block
+  - `goto` jumps connect to their label's statement
+  - `t.Fatal`, `FailNow` and `Skip*` on the function's own `*testing.T`,
+    `B`, `F` or `testing.TB` parameter are exits, like `panic`, `os.Exit`
+    and `log.Fatal*`. Through a helper or another variable, they're plain
+    calls.
 - **Not seen:** reflection, `go:linkname`, and files built only for other
   platforms. *inherent*
 
@@ -242,7 +247,6 @@ How calls resolve through imports:
 [#71]: https://github.com/aitakemyjob/codediver/issues/71
 [#72]: https://github.com/aitakemyjob/codediver/issues/72
 [#73]: https://github.com/aitakemyjob/codediver/issues/73
-[#74]: https://github.com/aitakemyjob/codediver/issues/74
 [#75]: https://github.com/aitakemyjob/codediver/issues/75
 [#76]: https://github.com/aitakemyjob/codediver/issues/76
 [#79]: https://github.com/aitakemyjob/codediver/issues/79
