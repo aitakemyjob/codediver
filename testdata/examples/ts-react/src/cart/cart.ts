@@ -39,3 +39,11 @@ export class GiftCart extends Cart {
 export function summarize(cart?: Cart): string {
   return formatCents(cart?.subtotal() ?? 0);
 }
+
+/**
+ * A gift cart's total as text. cart is a GiftCart, so subtotal() is the
+ * one with the gift card taken off, not Cart's above.
+ */
+export function giftSummary(cart: GiftCart): string {
+  return formatCents(cart.subtotal());
+}

@@ -650,7 +650,7 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 	}
 
 	// Call edges: through imports where they resolve, else by name.
-	finder := newFinderChain(byName, newModuleGraph(gfiles, fileSet))
+	finder := newFinderChain(byName, newModuleGraph(gfiles, fileSet), gfiles)
 	// scan records the calls on line ln (masked text) as made by from.
 	scan := func(from *Symbol, gf *genericFile, ln int, text string) {
 		for _, m := range callRe.FindAllStringSubmatch(text, -1) {
@@ -659,7 +659,8 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 			if keywords[name] && (recv == "" || !definable[name]) {
 				continue
 			}
-			target := finder.find(callSite{from: from, file: gf, recv: recv, name: name})
+			m := finder.find(callSite{from: from, file: gf, recv: recv, name: name})
+			target := m.target
 			if target == nil || target.ID == from.ID && recv == "" {
 				continue
 			}
@@ -683,7 +684,7 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 					}
 				}
 			}
-			ix.addEdge(Edge{From: from.ID, To: to, Kind: EdgeCall, Lines: []int{ln}, Heuristic: true}, merge)
+			ix.addEdge(Edge{From: from.ID, To: to, Kind: EdgeCall, Lines: []int{ln}, Heuristic: true, Guessed: m.guessed}, merge)
 		}
 		if re := bareInterpCalls[gf.lang]; re != nil {
 			for _, m := range re.FindAllStringSubmatch(text, -1) {
@@ -702,8 +703,8 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 						recv = recv[j+1:]
 					}
 				}
-				if t := finder.find(callSite{from: from, file: gf, recv: recv, name: name}); t != nil && t.ID != from.ID {
-					ix.addEdge(Edge{From: from.ID, To: t.ID, Kind: kind, Lines: []int{ln}, Heuristic: true}, merge)
+				if m := finder.find(callSite{from: from, file: gf, recv: recv, name: name}); m.target != nil && m.target.ID != from.ID {
+					ix.addEdge(Edge{From: from.ID, To: m.target.ID, Kind: kind, Lines: []int{ln}, Heuristic: true, Guessed: m.guessed}, merge)
 				}
 			}
 			for _, m := range jsxRe.FindAllStringSubmatch(text, -1) {
@@ -990,19 +991,21 @@ func docAbove(raw []string, i int, sp *langSpec) string {
 }
 
 // pickTarget chooses the most plausible definition for a called name.
-func pickTarget(from *Symbol, recv string, cands []*Symbol, file string) *Symbol {
+// guessed reports that it chose among several equally close candidates
+// that are different definitions (overloads of one method don't count).
+func pickTarget(from *Symbol, recv string, cands []*Symbol, file string) (target *Symbol, guessed bool) {
 	if len(cands) == 0 {
-		return nil
+		return nil, false
 	}
 	// Methods of built-in types (int.Parse, Math.max, String.valueOf)
 	// are never the repository's code.
 	if builtinTypes[recv] {
-		return nil
+		return nil, false
 	}
 	if recv == "this" || recv == "self" {
 		for _, c := range cands {
 			if c.Parent != "" && c.Parent == from.Parent {
-				return c
+				return c, false
 			}
 		}
 	}
@@ -1037,14 +1040,22 @@ func pickTarget(from *Symbol, recv string, cands []*Symbol, file string) *Symbol
 		return out
 	}
 	for _, group := range [][]*Symbol{filter(sameFile), filter(sameDir), filter(cands)} {
-		if len(group) == 1 {
-			return group[0]
-		}
-		if len(group) > 1 && len(group) <= 3 {
-			return group[0]
+		if len(group) >= 1 && len(group) <= 3 {
+			return group[0], distinctDefinitions(group)
 		}
 	}
-	return nil
+	return nil, false
+}
+
+// distinctDefinitions reports whether candidates name more than one
+// definition, as opposed to overloads sharing a qualified name.
+func distinctDefinitions(cands []*Symbol) bool {
+	for _, c := range cands[1:] {
+		if c.File != cands[0].File || c.Qualified != cands[0].Qualified {
+			return true
+		}
+	}
+	return false
 }
 
 // builtinTypes are standard type and namespace names whose static

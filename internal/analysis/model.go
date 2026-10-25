@@ -77,6 +77,9 @@ type Edge struct {
 	Kind      EdgeKind `json:"kind"`
 	Lines     []int    `json:"lines,omitempty"`
 	Heuristic bool     `json:"heuristic,omitempty"`
+	// Guessed marks a call matched by name to one of several same-named
+	// definitions, with nothing (import, receiver type) to tell them apart.
+	Guessed bool `json:"guessed,omitempty"`
 }
 
 type Package struct {
@@ -144,6 +147,7 @@ func (ix *Index) addEdge(e Edge, merge map[[3]string]int) {
 	key := [3]string{e.From, e.To, string(e.Kind)}
 	if i, ok := merge[key]; ok {
 		ix.Edges[i].Lines = append(ix.Edges[i].Lines, e.Lines...)
+		ix.Edges[i].Guessed = ix.Edges[i].Guessed || e.Guessed
 		return
 	}
 	merge[key] = len(ix.Edges)

@@ -317,3 +317,15 @@ func TestRenderFlowClosures(t *testing.T) {
 		}
 	}
 }
+
+// A guessed edge says so, and the precision note explains it (#67).
+func TestRenderGraphGuessed(t *testing.T) {
+	g := &analysis.Graph{Kind: "callgraph", Nodes: []analysis.GraphNode{{ID: "a", Label: "run", Root: true}, {ID: "b", Label: "Cache.save"}},
+		Edges: []analysis.GraphEdge{{ID: "e", From: "a", To: "b", Kind: "call", Heuristic: true, Guessed: true}}}
+	out := renderGraph(g)
+	for _, want := range []string{"run → Cache.save (call) ~ (guessed: one of several same-named definitions)", "Edges marked guessed"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("renderGraph missing %q:\n%s", want, out)
+		}
+	}
+}

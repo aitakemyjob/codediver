@@ -27,16 +27,18 @@ radius.
   (braces, indentation or `end`), imports, and calls.
 - Calls are found as `name(` or `receiver.name(`. In TypeScript,
   JavaScript and Python, a call is first resolved through the calling
-  file's imports (see below). Otherwise, and in every other language, it
-  is matched **by name**.
+  file's imports, then, for `receiver.name(`, through the receiver's
+  class where the code writes it down (see below). Otherwise, and in every
+  other language, it is matched **by name**.
 - When several definitions share a name, CodeDiver prefers:
   1. a method of the same class, for `this.`/`self.` calls
   2. a definition in the same file
   3. one in the same directory
   4. any match in the repository
 
-  If the closest group has one to three candidates, the **first** is linked.
-  With more than three, no edge is drawn.
+  If the closest group has one to three candidates, the **first** is linked,
+  and when they are different definitions (not overloads of one method)
+  the edge is marked **guessed**. With more than three, no edge is drawn.
 - Calls on built-in types and namespaces (`int.Parse`, `Math.max`,
   `String::new`) never link to the repository's code.
 - Code inside string interpolation counts as code: JavaScript and
@@ -64,6 +66,12 @@ It **does not** guarantee that:
 - **The edge is real.** Decorators and some call shapes match by accident
   (see the known limitations below).
 
+A **guessed** edge is one where several same-named definitions were
+equally close and nothing (an import, the receiver's class) told them
+apart, so the first was picked. The app labels it *guess?* with a dotted
+line; agent tools add *(guessed: …)* and say so in the precision note.
+Check these against the code first.
+
 ## Support matrix
 
 | | Symbols | Call graph, trace, blast radius | Control flow | Dependencies | Tests found | Coverage |
@@ -82,7 +90,7 @@ It **does not** guarantee that:
 **Control flow (—)** is only built for Go. For other languages, the Logic
 view and `get_function_flow` show the signature and one body block; ask your
 agent to explain the function (`explain_function`) instead. TypeScript and
-Python control flow are planned ([#71], [#72], [#73]).
+Python control flow are planned ([#94], [#72], [#73]).
 
 **Complexity** outside Go counts branch keywords and `&&`, `||` and `?`, so
 treat it as an estimate.
@@ -159,8 +167,14 @@ How definitions are named:
   one.
 
 Edges that are wrong or missing:
-- `cache.save()` links to the first class with a `save` method, which may be
-  the wrong class. *[#67]*
+- **Receiver classes:** `s.save()` links to the `save` of `s`'s class
+  when it's written down: `const s = new SqlStore()`, a typed parameter
+  (`s: SqlStore`, `s?: SqlStore`), a typed field (`private store:
+  SqlStore`, then `this.store.save()`), a constructor parameter property
+  (`constructor(private store: SqlStore)`), `this.store = new SqlStore()`
+  or `this.store = store` from a typed parameter. Methods inherited
+  through `extends` are found. Otherwise `cache.save()` is matched by name
+  and may be marked guessed.
 - `super.handle()` links to `handle` on the class named by `extends`.
   When that class isn't in the repository, no edge is drawn.
 - Functions passed as values get no edge: `items.map(format)`,
@@ -195,9 +209,12 @@ How calls resolve through imports:
   standard library, an installed package), the call falls back to name
   matching. These edges are still marked `~`.
 
-- **Same-named methods:** `store.save()` links to the first class with a
-  `save` method; with both `Store.save` and `Cache.save`, it can pick
-  `Cache.save`. *[#67]*
+- **Receiver classes:** `store.save()` links to the `save` of `store`'s
+  class when it's written down: `s = Store()`, an annotated parameter
+  (`s: Store`, `Optional[Store]`, `Store | None`), `self.store = Store()`,
+  `self.store = store` from an annotated parameter, `self.store: Store`, or
+  a class-level annotation (`store: Store`, as in dataclasses). Otherwise it's
+  matched by name and may be marked guessed.
 - **Functions passed as values** get no edge: `sorted(xs, key=keyfn)`,
   `map(fn, xs)`, callbacks. *[#68]*
 - **Implicit calls:** `@property` reads and dunder methods (`__enter__`,
@@ -245,10 +262,9 @@ How calls resolve through imports:
   on a path.
 
 [#18]: https://github.com/aitakemyjob/codediver/issues/18
-[#67]: https://github.com/aitakemyjob/codediver/issues/67
 [#68]: https://github.com/aitakemyjob/codediver/issues/68
 [#70]: https://github.com/aitakemyjob/codediver/issues/70
-[#71]: https://github.com/aitakemyjob/codediver/issues/71
+[#94]: https://github.com/aitakemyjob/codediver/issues/94
 [#72]: https://github.com/aitakemyjob/codediver/issues/72
 [#73]: https://github.com/aitakemyjob/codediver/issues/73
 [#75]: https://github.com/aitakemyjob/codediver/issues/75

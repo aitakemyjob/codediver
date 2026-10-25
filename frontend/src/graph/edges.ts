@@ -34,7 +34,9 @@ export function toFlowEdge(e: GraphEdge, opts: { highlight?: boolean; dim?: bool
   const st = edgeStyles[e.kind] ?? edgeStyles.call;
   const hot = opts.highlight || e.highlight;
   const color = hot ? 'var(--accent)' : st.color;
-  const label = e.label ?? (e.count && e.count > 1 ? `×${e.count}` : st.label);
+  const base = e.label ?? (e.count && e.count > 1 ? `×${e.count}` : st.label);
+  // A guessed call picked one of several same-named definitions.
+  const label = e.guessed ? (base ? `${base} · guess?` : 'guess?') : base;
   return {
     id: e.id,
     source: e.from,
@@ -47,7 +49,7 @@ export function toFlowEdge(e: GraphEdge, opts: { highlight?: boolean; dim?: bool
     style: {
       stroke: color,
       strokeWidth: (st.width ?? 1.5) + (hot ? 0.6 : 0) + Math.min(2, (e.count ?? 1) - 1) * 0.4,
-      strokeDasharray: st.dash,
+      strokeDasharray: e.guessed ? '1 4' : st.dash,
       opacity: opts.dim ? 0.12 : e.heuristic ? 0.6 : 1,
     },
     markerEnd: { type: MarkerType.ArrowClosed, color, width: 16, height: 16 },
