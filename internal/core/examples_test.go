@@ -94,6 +94,8 @@ var examples = []exampleCase{
 			// Components rendered only through JSX in App.
 			"OrderSummary": {cover: "full", tested: true, callers: 1},
 			"OrderForm":    {cover: "0", callers: 1},
+			// Rendered from main.tsx's top level: its <module> calls it (#69).
+			"App": {cover: "0", callers: 1},
 			// The cart: a constructor, one-line methods, a class field
 			// holding an arrow, super and ?. calls.
 			"Cart.constructor":  {cover: "full", tested: true, callers: 1}, // new Cart() in a test and in CartPage
@@ -516,24 +518,12 @@ func TestExampleRubyHelpers(t *testing.T) {
 // README's support matrix stays honest. When one of these fails because
 // analysis got better, update the matrix and move the check above.
 func TestExampleKnownGaps(t *testing.T) {
-	s, rt := openExample(t, "ts-react")
-	a, err := s.qaAnalyze(context.Background(), rt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range a.funcs {
-		// main.tsx renders <App /> from module-level code, which isn't a
-		// function, so App has no caller and counts as an entry point.
-		if f.Name == "App" && f.Callers != 0 {
-			t.Errorf("App callers = %d: module-level code now counts as a caller; update the support matrix", f.Callers)
-		}
-	}
-
 	// Ruby: a call without parentheses (`@store.save order`) isn't found
 	// (#76), and neither is one inside string interpolation
 	// (`"#{timestamp}"`, #79).
-	s, rt = openExample(t, "ruby-rspec")
-	if a, err = s.qaAnalyze(context.Background(), rt); err != nil {
+	s, rt := openExample(t, "ruby-rspec")
+	a, err := s.qaAnalyze(context.Background(), rt)
+	if err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range a.funcs {

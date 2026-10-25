@@ -58,6 +58,8 @@ export function kindStyle(kind: SymbolKind | string | undefined): { glyph: strin
       return { glyph: 'T', color: 'var(--syn-type)' };
     case 'external':
       return { glyph: '↗', color: 'var(--text-3)' };
+    case 'module':
+      return { glyph: '◇', color: 'var(--accent-2)' };
     case 'package':
       return { glyph: '▣', color: 'var(--accent)' };
     default:

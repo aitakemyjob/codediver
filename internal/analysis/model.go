@@ -5,6 +5,7 @@
 package analysis
 
 import (
+	"path"
 	"sort"
 	"time"
 )
@@ -19,6 +20,10 @@ const (
 	KindInterface SymbolKind = "interface"
 	KindType      SymbolKind = "type"
 	KindExternal  SymbolKind = "external"
+	// KindModule is a file's top-level code (TS/JS and Python module
+	// statements, Go package-level var initializers). It calls but is never
+	// called, and isn't a function: it has no tests or coverage of its own.
+	KindModule SymbolKind = "module"
 )
 
 // IsCallable reports whether a symbol kind participates in call graphs.
@@ -99,6 +104,16 @@ type Index struct {
 
 	callees map[string][]int
 	callers map[string][]int
+}
+
+// newModuleSymbol returns the <module> symbol for file's top-level code,
+// spanning its lines. It isn't listed among the file's symbols, so outlines
+// and SymbolAt never pick it.
+func newModuleSymbol(file, lang string, lines int) *Symbol {
+	return &Symbol{
+		ID: "mod:" + file, Name: "<module>", Qualified: path.Base(file) + " <module>", Kind: KindModule,
+		Language: lang, File: file, Line: 1, EndLine: max(lines, 1),
+	}
 }
 
 // newIndex creates an empty index for the repository at root.
@@ -215,7 +230,7 @@ type Stats struct {
 func (ix *Index) Stats() Stats {
 	st := Stats{Files: len(ix.ByFile), Edges: len(ix.Edges), Languages: ix.Languages, Errors: len(ix.Errors), BuiltAt: ix.BuiltAt, DurationMS: ix.Duration.Milliseconds()}
 	for _, s := range ix.Symbols {
-		if s.Kind == KindExternal {
+		if s.Kind == KindExternal || s.Kind == KindModule {
 			continue
 		}
 		st.Symbols++

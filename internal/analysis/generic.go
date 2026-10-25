@@ -696,6 +696,62 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 
 	// Call edges: through imports where they resolve, else by name.
 	finder := newFinderChain(byName, newModuleGraph(gfiles, fileSet))
+	// scan records the calls on line ln (masked text) as made by from.
+	scan := func(from *Symbol, gf *genericFile, ln int, text string) {
+		for _, m := range callRe.FindAllStringSubmatch(text, -1) {
+			recv, name := m[1], m[2]
+			// Keywords aren't calls, except as methods: Store::new().
+			if keywords[name] && (recv == "" || !definable[name]) {
+				continue
+			}
+			target := finder.find(callSite{from: from, file: gf, recv: recv, name: name})
+			if target == nil || target.ID == from.ID && recv == "" {
+				continue
+			}
+			to := target.ID
+			if target.Kind == KindClass {
+				// `new Foo()` / `Foo()`: link to the constructor if present, else the class.
+				for _, cand := range byName["constructor"] {
+					if cand.Parent == target.ID {
+						to = cand.ID
+					}
+				}
+				for _, cand := range byName["__init__"] {
+					if cand.Parent == target.ID {
+						to = cand.ID
+					}
+				}
+				// Java, C#, Kotlin, Dart: constructors share the class's name.
+				for _, cand := range byName[target.Name] {
+					if cand.Kind == KindMethod && cand.Parent == target.ID {
+						to = cand.ID
+					}
+				}
+			}
+			ix.addEdge(Edge{From: from.ID, To: to, Kind: EdgeCall, Lines: []int{ln}, Heuristic: true}, merge)
+		}
+		if jsxFile(gf.path) {
+			// Rendering a component is calling it; passing one is a reference.
+			link := func(name string, kind EdgeKind) {
+				recv := ""
+				if i := strings.LastIndexByte(name, '.'); i >= 0 {
+					recv, name = name[:i], name[i+1:]
+					if j := strings.LastIndexByte(recv, '.'); j >= 0 {
+						recv = recv[j+1:]
+					}
+				}
+				if t := finder.find(callSite{from: from, file: gf, recv: recv, name: name}); t != nil && t.ID != from.ID {
+					ix.addEdge(Edge{From: from.ID, To: t.ID, Kind: kind, Lines: []int{ln}, Heuristic: true}, merge)
+				}
+			}
+			for _, m := range jsxRe.FindAllStringSubmatch(text, -1) {
+				link(m[1], EdgeCall)
+			}
+			for _, m := range componentRefRe.FindAllStringSubmatch(text, -1) {
+				link(m[1]+m[2]+m[3], EdgeRef)
+			}
+		}
+	}
 	for _, gf := range gfiles {
 		for _, s := range gf.syms {
 			if !s.Kind.IsCallable() {
@@ -722,61 +778,42 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 						text = text[i+len(s.Name):]
 					}
 				}
-				for _, m := range callRe.FindAllStringSubmatch(text, -1) {
-					recv, name := m[1], m[2]
-					// Keywords aren't calls, except as methods: Store::new().
-					if keywords[name] && (recv == "" || !definable[name]) {
-						continue
-					}
-					target := finder.find(callSite{from: s, file: gf, recv: recv, name: name})
-					if target == nil || target.ID == s.ID && recv == "" {
-						continue
-					}
-					to := target.ID
-					if target.Kind == KindClass {
-						// `new Foo()` / `Foo()`: link to the constructor if present, else the class.
-						for _, cand := range byName["constructor"] {
-							if cand.Parent == target.ID {
-								to = cand.ID
-							}
-						}
-						for _, cand := range byName["__init__"] {
-							if cand.Parent == target.ID {
-								to = cand.ID
-							}
-						}
-						// Java, C#, Kotlin, Dart: constructors share the class's name.
-						for _, cand := range byName[target.Name] {
-							if cand.Kind == KindMethod && cand.Parent == target.ID {
-								to = cand.ID
-							}
-						}
-					}
-					ix.addEdge(Edge{From: s.ID, To: to, Kind: EdgeCall, Lines: []int{ln}, Heuristic: true}, merge)
-				}
-				if jsxFile(gf.path) {
-					// Rendering a component is calling it; passing one is a reference.
-					link := func(name string, kind EdgeKind) {
-						recv := ""
-						if i := strings.LastIndexByte(name, '.'); i >= 0 {
-							recv, name = name[:i], name[i+1:]
-							if j := strings.LastIndexByte(recv, '.'); j >= 0 {
-								recv = recv[j+1:]
-							}
-						}
-						if t := finder.find(callSite{from: s, file: gf, recv: recv, name: name}); t != nil && t.ID != s.ID {
-							ix.addEdge(Edge{From: s.ID, To: t.ID, Kind: kind, Lines: []int{ln}, Heuristic: true}, merge)
-						}
-					}
-					for _, m := range jsxRe.FindAllStringSubmatch(text, -1) {
-						link(m[1], EdgeCall)
-					}
-					for _, m := range componentRefRe.FindAllStringSubmatch(text, -1) {
-						link(m[1]+m[2]+m[3], EdgeRef)
-					}
-				}
+				scan(s, gf, ln, text)
 			}
 		}
+		if moduleCode[gf.lang] && !IsTestFile(gf.path) {
+			scanModule(gf, ix, scan)
+		}
+	}
+}
+
+// moduleCode lists the languages whose top-level statements run as a
+// module and are read as the file's <module> caller. Test files are left
+// out: their top level is test code (describe/it blocks), not callers.
+var moduleCode = map[string]bool{"typescript": true, "javascript": true, "python": true}
+
+// scanModule records the calls in a file's top-level code (outside every
+// function, class and interface) as made by the file's <module> symbol,
+// which is added only when it calls something. Decorator lines belong to
+// the definition below them, so they're skipped.
+func scanModule(gf *genericFile, ix *Index, scan func(from *Symbol, gf *genericFile, ln int, text string)) {
+	inside := make([]bool, len(gf.lines)+1)
+	for _, s := range gf.syms {
+		for ln := s.Line; ln <= s.EndLine && ln <= len(gf.lines); ln++ {
+			inside[ln] = true
+		}
+	}
+	mod := newModuleSymbol(gf.path, gf.lang, len(gf.lines))
+	mod.Heuristic = true
+	before := len(ix.Edges)
+	for ln := 1; ln <= len(gf.lines); ln++ {
+		if inside[ln] || strings.HasPrefix(strings.TrimSpace(gf.lines[ln-1]), "@") {
+			continue
+		}
+		scan(mod, gf, ln, gf.lines[ln-1])
+	}
+	if len(ix.Edges) > before {
+		ix.Symbols[mod.ID] = mod
 	}
 }
 
