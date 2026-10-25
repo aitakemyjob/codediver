@@ -85,6 +85,12 @@ every merged pull request.
   doesn't.
 
 ### Fixed
+- **Calls inside string interpolation** (#79) in Ruby, Kotlin, C#, Swift,
+  Dart, Scala and PHP are now code, like JavaScript template literals and
+  Python f-strings already were, so they get call edges and test-to-code
+  mapping. In Ruby, a bare `"#{name}"` calls the caller's class's method
+  of that name: `Notifier.timestamp` in the `ruby-rspec` example now has
+  its caller.
 - **Call graphs outside Go** (#59): definitions and calls the lexical
   analyzer missed or got wrong.
   - **TypeScript/JavaScript** (#61, #62):

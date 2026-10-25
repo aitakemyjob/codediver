@@ -184,6 +184,9 @@ var examples = []exampleCase{
 			// Orders::MemoryStore.new runs initialize.
 			"MemoryStore.initialize": {cover: "full", tested: true, callers: 0},
 			"MemoryStore.find":       {cover: "full", tested: true, callers: 1},
+			// Called only as "#{timestamp}" in Notifier.deliver, so the tests
+			// of deliver reach it (#79).
+			"Notifier.timestamp": {cover: "partial", tested: true, callers: 1},
 		},
 		hardToTest: "Notifier.deliver", hints: []string{"env", "network"},
 		validate: "Orders.validate", file: "lib/orders/order.rb", edit: proposals.Edit{Old: "if order.qty > 1000", New: "if order.qty > 500"}, caller: "OrderHandler.create_order", callerStatus: StatusCaller,
@@ -572,15 +575,14 @@ func TestExampleRubyHelpers(t *testing.T) {
 // analysis got better, update the matrix and move the check above.
 func TestExampleKnownGaps(t *testing.T) {
 	// Ruby: a call without parentheses (`@store.save order`) isn't found
-	// (#76), and neither is one inside string interpolation
-	// (`"#{timestamp}"`, #79).
+	// (#76).
 	s, rt := openExample(t, "ruby-rspec")
 	a, err := s.qaAnalyze(context.Background(), rt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range a.funcs {
-		if (f.Name == "MemoryStore.save" || f.Name == "Notifier.timestamp") && f.Callers != 0 {
+		if f.Name == "MemoryStore.save" && f.Callers != 0 {
 			t.Errorf("%s callers = %d: the gap is fixed; update the support matrix and the README", f.Name, f.Callers)
 		}
 	}

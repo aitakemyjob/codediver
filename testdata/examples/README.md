@@ -108,7 +108,7 @@ every language and the known gaps, see
 | Test → code mapping | ✓ (`MemoryStore::new()` → `new`; test modules aren't code under test) | ✓ (`store.Save` → `MemoryStore.Save`: the receiver names the class) | ✓ (`Foo.new` → `initialize`; helpers inside `describe`) |
 | Call edges | name matching (`~`) | name matching (`~`); `int.Parse` isn't the repo's `Parse` | name matching (`~`) |
 | Calls without parentheses (`@store.save order`) | n/a | n/a | ✗ (#76) |
-| Calls inside string interpolation (`"#{timestamp}"`) | n/a (none in the example) | n/a (none in the example) | ✗ (#79) |
+| Calls inside string interpolation (`"#{timestamp}"`) | n/a (none in the example) | n/a (none in the example) | ✓ (a bare name is a call when the class has that method) |
 | Coverage import | ✓ LCOV | ✓ Cobertura | ✓ LCOV |
 | Suite detected for Run coverage | ✓ cargo llvm-cov | ✓ dotnet test | ✓ `bundle exec rspec` |
 | Testability hints | ✓ (env, clock, network) | ✓ (env, clock, network) | ✓ (env, clock, network) |

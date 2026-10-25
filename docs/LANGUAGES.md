@@ -39,6 +39,11 @@ radius.
   With more than three, no edge is drawn.
 - Calls on built-in types and namespaces (`int.Parse`, `Math.max`,
   `String::new`) never link to the repository's code.
+- Code inside string interpolation counts as code: JavaScript and
+  TypeScript `` `${f(x)}` ``, Python f-strings, Ruby `"#{f(x)}"`, Kotlin
+  and Dart `"${f(x)}"`, C# `$"{F(x)}"`, Swift `"\(f(x))"`, Scala
+  `s"${f(x)}"` and PHP `"{$o->f()}"`. Ruby heredocs and `%Q()` aren't
+  recognized as strings, so their text reads as code.
 
 ## The `~` marker
 
@@ -210,15 +215,14 @@ How calls resolve through imports:
 - **Rust:** `impl Trait for Type` isn't linked to the trait. *[#76]*
   Calls inside macros like `println!` are found. Functions in
   `#[cfg(test)]` modules are test code, not code under test.
-- **Kotlin and C#:** calls inside string interpolation (`"${total(o)}"`,
-  `$"{Total(o)}"`) are lost with the string text. *[#79]*
 
 ### Ruby
 
 - Calls without parentheses (`write o`, `save!`) aren't found, and that's
   how most Ruby is written. Expect sparse call graphs. *[#76]*
-- Calls inside string interpolation (`"sent at #{timestamp}"`) are lost
-  with the string text. *[#79]*
+- A bare name in interpolation (`"sent at #{timestamp}"`) is a call when
+  the caller's own class has a method of that name; otherwise it's taken
+  to be a local variable.
 - `Foo.new` reaches `Foo#initialize` in the test-to-code mapping, but not
   yet in the call graph.
 
@@ -249,4 +253,3 @@ How calls resolve through imports:
 [#73]: https://github.com/aitakemyjob/codediver/issues/73
 [#75]: https://github.com/aitakemyjob/codediver/issues/75
 [#76]: https://github.com/aitakemyjob/codediver/issues/76
-[#79]: https://github.com/aitakemyjob/codediver/issues/79

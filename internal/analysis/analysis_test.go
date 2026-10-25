@@ -425,6 +425,94 @@ func TestMaskSource(t *testing.T) {
 	}
 }
 
+// Interpolated code in each language's strings stays code; the string text
+// around it, and strings that don't interpolate, are masked (#79).
+func TestMaskInterpolation(t *testing.T) {
+	cases := []struct{ lang, src, keep, drop string }{
+		{"ruby", `s = "fake() at #{total(o)}"`, "total(o)", "fake("},
+		{"ruby", `s = "#{a("x")} and \#{escaped(1)}"`, "a(", "escaped("},
+		{"ruby", `s = 'no #{code(x)}'`, "", "code("},
+		{"kotlin", `val s = "fake() ${total(o)}"`, "total(o)", "fake("},
+		{"kotlin", `val s = "$name fake()"`, "", "fake("},
+		{"csharp", `var s = $"fake() {Total(o)}";`, "Total(o)", "fake("},
+		{"csharp", `var s = $@"{Total(o)} {{Literal()}}";`, "Total(o)", "Literal("},
+		{"csharp", `var s = @$"{Total(o)}";`, "Total(o)", ""},
+		{"csharp", `var s = "{NotCode(o)}";`, "", "NotCode("},
+		{"swift", `let s = "fake() \(total(o, f(x)))"`, "total(o, f(x))", "fake("},
+		{"swift", `let s = "\\(notCode(x))"`, "", "notCode("},
+		{"dart", `var s = 'fake() ${total(o)}';`, "total(o)", "fake("},
+		{"scala", `val s = s"fake() ${total(o)}"`, "total(o)", "fake("},
+		{"scala", `val s = f"${rate(o)}%.2f"`, "rate(o)", ""},
+		{"scala", `val s = "${notCode(o)}"`, "", "notCode("},
+		{"php", `$s = "fake() {$o->total()}";`, "total()", "fake("},
+		{"php", `$s = 'no {$o->code()}';`, "", "code("},
+		{"typescript", "s = `fake() ${total(o)}`", "total(o)", "fake("},
+	}
+	for _, c := range cases {
+		got := maskSource(c.src, specs[c.lang])
+		if c.keep != "" && !strings.Contains(got, c.keep) || c.drop != "" && strings.Contains(got, c.drop) {
+			t.Errorf("%s %q masked = %q", c.lang, c.src, got)
+		}
+		if len(got) != len(c.src) {
+			t.Errorf("%s %q: masking must keep offsets", c.lang, c.src)
+		}
+	}
+}
+
+// Calls inside interpolation are edges, and a bare Ruby `#{name}` calls a
+// method of the caller's own class (#79).
+func TestGenericInterpolatedCalls(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"Report.kt": `class Report {
+    fun total(o: Int): Int = o
+    fun show(o: Int): String = "total: ${total(o)}"
+}
+`,
+		"notifier.rb": `class Notifier
+  def self.deliver(order)
+    name = "x"
+    "sent #{name} at #{timestamp} #{format(order)}"
+  end
+
+  def self.timestamp
+    Time.now
+  end
+
+  def self.format(order)
+    order.to_s
+  end
+end
+
+class Other
+  def name
+    "o"
+  end
+end
+`,
+	})
+	lang := func(p string) string {
+		switch path.Ext(p) {
+		case ".rb":
+			return "ruby"
+		}
+		return testLang(p)
+	}
+	ix := Build(root, files, lang)
+	if !hasEdge(ix, "h:Report.kt#Report.show", "h:Report.kt#Report.total", EdgeCall) {
+		t.Errorf("show should call total: %+v", ix.Callees("h:Report.kt#Report.show"))
+	}
+	deliver := "h:notifier.rb#Notifier.deliver"
+	for _, to := range []string{"h:notifier.rb#Notifier.timestamp", "h:notifier.rb#Notifier.format"} {
+		if !hasEdge(ix, deliver, to, EdgeCall) {
+			t.Errorf("deliver should call %s: %+v", to, ix.Callees(deliver))
+		}
+	}
+	// #{name} is a local variable here; Other#name is another class's.
+	if hasEdge(ix, deliver, "h:notifier.rb#Other.name", EdgeCall) {
+		t.Errorf("bare #{name} linked to another class's method: %+v", ix.Callees(deliver))
+	}
+}
+
 // Python f-string replacement fields are code; their text and {{ }} are
 // not (#64).
 func TestMaskPythonFStrings(t *testing.T) {
