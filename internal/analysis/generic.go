@@ -22,6 +22,12 @@ type defPattern struct {
 	needsIn bool // only matches inside a class/impl body (methods)
 	// in narrows needsIn to one container kind (KindClass, kindObject).
 	in SymbolKind
+	// recv is the capture group of an extension function's receiver type
+	// (Kotlin's `fun String.slug()`), 0 if none.
+	recv int
+	// trait is the capture group of the trait an impl block implements
+	// (Rust's `impl Store for MemoryStore`), 0 if none.
+	trait int
 }
 
 // kindObject is an object literal assigned to a name or default-exported
@@ -46,6 +52,12 @@ type langSpec struct {
 	// exprBody marks languages where `= expr` after a signature is the
 	// body (Kotlin, Scala: `fun f(x: Int) = x + 1`).
 	exprBody bool
+	// extensionBlock matches a block whose functions extend a type (Scala
+	// 3's `extension (s: String)`): group 1 the type.
+	extensionBlock *regexp.Regexp
+	// supertypes match a class header's implemented interfaces (and, for
+	// C# and Kotlin, its base class): group 1 a comma-separated list.
+	supertypes []*regexp.Regexp
 	// interps are the string forms whose embedded code stays code (set
 	// from interpolations).
 	interps    []interpRule
@@ -73,7 +85,7 @@ var specs = map[string]*langSpec{
 		defs: []defPattern{
 			{re: rx(`^\s*(?:pub(?:\([^)]*\))?\s+)?(?:struct|enum|union)\s+([A-Za-z_]\w*)`), kind: KindStruct, name: 1},
 			{re: rx(`^\s*(?:pub(?:\([^)]*\))?\s+)?(?:unsafe\s+)?trait\s+([A-Za-z_]\w*)`), kind: KindInterface, name: 1},
-			{re: rx(`^\s*impl(?:<[^>]*>)?\s+(?:[\w:<>]+\s+for\s+)?([A-Za-z_]\w*)`), kind: "impl", name: 1},
+			{re: rx(`^\s*impl(?:<[^>]*>)?\s+(?:([\w:]+)(?:<[^>]*>)?\s+for\s+)?([A-Za-z_]\w*)`), kind: "impl", name: 2, trait: 1},
 			{re: rx(`^\s*(?:pub(?:\([^)]*\))?\s+)?(?:const\s+)?(?:async\s+)?(?:unsafe\s+)?(?:extern\s+"[^"]*"\s+)?fn\s+([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(([^)]*)`), kind: KindFunc, name: 1, params: 2},
 		},
 		imports:    []*regexp.Regexp{rx(`^\s*(?:pub\s+)?mod\s+(\w+)\s*;`), rx(`^\s*use\s+(crate::[\w:]+)`)},
@@ -89,10 +101,11 @@ var specs = map[string]*langSpec{
 		defs: []defPattern{
 			{re: rx(`^\s*(?:(?:public|private|internal|protected|open|abstract|sealed|data|enum|inner|annotation)\s+)*(?:class|object)\s+([A-Za-z_]\w*)`), kind: KindClass, name: 1},
 			{re: rx(`^\s*(?:(?:public|private|internal|protected|sealed|fun)\s+)*interface\s+([A-Za-z_]\w*)`), kind: KindInterface, name: 1},
-			{re: rx(`^\s*(?:(?:public|private|internal|protected|open|override|suspend|inline|operator|infix|tailrec|abstract)\s+)*fun\s+(?:<[^>]*>\s*)?(?:[\w.<>]+\.)?([A-Za-z_]\w*)\s*\(([^)]*)`), kind: KindFunc, name: 1, params: 2},
+			{re: rx(`^\s*(?:(?:public|private|internal|protected|open|override|suspend|inline|operator|infix|tailrec|abstract)\s+)*fun\s+(?:<[^>]*>\s*)?(?:([\w.<>?]+)\.)?([A-Za-z_]\w*)\s*\(([^)]*)`), kind: KindFunc, name: 2, params: 3, recv: 1},
 		},
-		imports:  []*regexp.Regexp{rx(`^\s*import\s+([\w.]+)`)},
-		exprBody: true, block: "brace", lineCmt: []string{"//"}, blockCmt: [2]string{"/*", "*/"}, strDelims: `"'`,
+		supertypes: []*regexp.Regexp{rx(`^\s*(?:\w+\s+)*(?:class|object|interface)\s+\w+(?:<[^>]*>)?(?:\s*(?:private|internal|public)?\s*(?:constructor)?\s*\([^)]*\))?\s*:\s*([^{]+)`)},
+		imports:    []*regexp.Regexp{rx(`^\s*import\s+([\w.]+)`)},
+		exprBody:   true, block: "brace", lineCmt: []string{"//"}, blockCmt: [2]string{"/*", "*/"}, strDelims: `"'`,
 		extensions: []string{".kt"},
 	},
 	"swift": {
@@ -106,10 +119,15 @@ var specs = map[string]*langSpec{
 	"scala": {
 		defs: []defPattern{
 			{re: rx(`^\s*(?:(?:case|abstract|final|sealed|private|protected|implicit)\s+)*(?:class|object|trait)\s+([A-Za-z_]\w*)`), kind: KindClass, name: 1},
-			{re: rx(`^\s*(?:(?:override|private|protected|final|implicit)\s+)*def\s+([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*\(?([^)]*)`), kind: KindFunc, name: 1, params: 2},
+			// `def (s: String).slug` extends String.
+			{re: rx(`^\s*(?:(?:override|private|protected|final|implicit)\s+)*def\s+\(\s*\w+\s*:\s*([\w.\[\]]+)\s*\)\s*\.\s*([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*\(?([^)]*)`), kind: KindFunc, name: 2, params: 3, recv: 1},
+			// A one-line `extension (n: Int) def double` def is qualified
+			// by qualifyExtensions.
+			{re: rx(`^\s*(?:extension\s*(?:\[[^\]]*\]\s*)?\([^)]*\)\s*)?(?:(?:override|private|protected|final|implicit)\s+)*def\s+([A-Za-z_]\w*)\s*(?:\[[^\]]*\])?\s*\(?([^)]*)`), kind: KindFunc, name: 1, params: 2},
 		},
-		imports:  []*regexp.Regexp{rx(`^\s*import\s+([\w.]+)`)},
-		exprBody: true, block: "brace", lineCmt: []string{"//"}, blockCmt: [2]string{"/*", "*/"}, strDelims: `"`,
+		extensionBlock: rx(`^\s*extension\s*(?:\[[^\]]*\]\s*)?\(\s*\w+\s*:\s*([\w.]+)`),
+		imports:        []*regexp.Regexp{rx(`^\s*import\s+([\w.]+)`)},
+		exprBody:       true, block: "brace", lineCmt: []string{"//"}, blockCmt: [2]string{"/*", "*/"}, strDelims: `"`,
 		extensions: []string{".scala"},
 	},
 	"dart": jvmSpec(`^\s*(?:(?:static|final|const|external|Future<[^>]*>|async)\s+)*[\w<>\[\],.?]+\s+([a-zA-Z_]\w*)\s*\(([^)]*)\)?\s*(?:async\s*)?(?:\{.*|=>.*)?$`, ".dart"),
@@ -191,7 +209,14 @@ func jvmSpec(method, ext string) *langSpec {
 		defs: []defPattern{
 			{re: rx(`^\s*(?:@\w+(?:\([^)]*\))?\s+)*(?:(?:public|private|protected|internal|static|final|abstract|sealed|partial|data)\s+)*(?:class|record|enum|struct)\s+([A-Za-z_]\w*)`), kind: KindClass, name: 1},
 			{re: rx(`^\s*(?:(?:public|private|protected|internal)\s+)*(?:@)?interface\s+([A-Za-z_]\w*)`), kind: KindInterface, name: 1},
+			// Interface method declarations: `void save(Order o);`.
+			{re: rx(`^\s*(?:(?:public|abstract|default|static|internal)\s+)*[\w<>\[\],.?]+\s+([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(([^)]*)\)\s*(?:throws\s+[\w., ]+)?;\s*$`), kind: KindMethod, name: 1, params: 2, needsIn: true, in: KindInterface},
 			{re: rx(method), kind: KindMethod, name: 1, params: 2},
+		},
+		supertypes: []*regexp.Regexp{
+			rx(`\bimplements\s+([^{]+)`),
+			// C#: `class MemoryStore : IStore`, also a base class.
+			rx(`^\s*(?:\[[^\]]*\]\s*)*(?:\w+\s+)*(?:class|record|struct)\s+\w+(?:<[^>]*>)?(?:\([^)]*\))?\s*:\s*([^{]+)`),
 		},
 		imports:    []*regexp.Regexp{rx(`^\s*import\s+(?:static\s+)?([\w.]+)\s*;`), rx(`^\s*using\s+([\w.]+)\s*;`)},
 		block:      "brace",
@@ -536,6 +561,10 @@ type genericFile struct {
 	imports []string
 	// extends maps a class's ID to the name of the class it extends.
 	extends map[string]string
+	// supertypes maps a type's ID to the types its header lists as
+	// implemented (in C# and Kotlin also the base class; in Rust the
+	// traits of its `impl Trait for Type` blocks).
+	supertypes map[string][]string
 }
 
 var callRe = regexp.MustCompile(`(?:(this|self|[A-Za-z_$][\w$]*)\s*(?:\?\.|\.|::|->)\s*)?([A-Za-z_$][\w$]*)\s*\(`)
@@ -651,6 +680,7 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 
 	// Call edges: through imports where they resolve, else by name.
 	modules := newModuleGraph(gfiles, fileSet)
+	linkImplementations(ix, gfiles, newReceiverFinder(byName, modules, gfiles), merge)
 	finder := newFinderChain(byName, modules, gfiles)
 	refs := newValueRefs(byName, modules, gfiles)
 	// scan records the calls on line ln (masked text) as made by from.
@@ -855,7 +885,12 @@ func parseDefs(gf *genericFile, sp *langSpec) {
 			}
 			// C-family method heuristic must not fire on calls / control flow.
 			trimmed := strings.TrimSpace(line)
-			if d.kind == KindMethod || (d.kind == KindFunc && (gf.lang == "c" || gf.lang == "cpp")) {
+			// A method declared without a body in an interface or trait is
+			// abstract: `void save(Order o);`, `fn save(&mut self, o: Order);`,
+			// Kotlin's `fun save(o: Order)`.
+			bodiless := strings.HasSuffix(trimmed, ";") || sp.exprBody && !strings.ContainsAny(trimmed, "{=")
+			abstract := container != nil && container.Kind == KindInterface && bodiless && (d.kind == KindMethod || d.kind == KindFunc)
+			if (d.kind == KindMethod || (d.kind == KindFunc && (gf.lang == "c" || gf.lang == "cpp"))) && !abstract {
 				if strings.HasSuffix(trimmed, ";") && !strings.Contains(trimmed, "=>") || strings.HasPrefix(trimmed, "return") || strings.HasPrefix(trimmed, "else") || insideFunc {
 					continue
 				}
@@ -864,6 +899,9 @@ func parseDefs(gf *genericFile, sp *langSpec) {
 				}
 			}
 			end := blockEnd(gf.lines, i, sp)
+			if abstract {
+				end = ln
+			}
 			kind := d.kind
 			if kind == KindFunc || kind == KindMethod {
 				kind = KindFunc
@@ -879,6 +917,10 @@ func parseDefs(gf *genericFile, sp *langSpec) {
 			if d.params > 0 && d.params < len(m) {
 				s.Params = splitParams(m[d.params])
 			}
+			s.Abstract = abstract
+			if d.trait > 0 && m[d.trait] != "" {
+				gf.addSupertypes("h:"+gf.path+"#"+name, lastPathSegment(m[d.trait]))
+			}
 			if container != nil && kind == KindMethod {
 				cname := container.Name
 				s.Parent = container.ID
@@ -891,6 +933,12 @@ func parseDefs(gf *genericFile, sp *langSpec) {
 				}
 				s.Receiver = cname
 				s.Qualified = cname + "." + name
+			}
+			// Extension functions are qualified by the type they extend:
+			// Kotlin's `fun String.slug()` is String.slug.
+			if d.recv > 0 && container == nil && m[d.recv] != "" {
+				s.Receiver = extensionType(m[d.recv])
+				s.Qualified = s.Receiver + "." + name
 			}
 			s.ID = fmt.Sprintf("h:%s#%s", gf.path, s.Qualified)
 			if kind == "impl" || kind == kindObject {
@@ -907,17 +955,25 @@ func parseDefs(gf *genericFile, sp *langSpec) {
 			if container != nil && kind == KindMethod {
 				container.Methods = append(container.Methods, s.ID)
 			}
-			if kind == KindClass {
-				if m := extendsRe.FindStringSubmatch(line); m != nil {
+			if kind == KindClass || kind == KindInterface {
+				if m := extendsRe.FindStringSubmatch(line); m != nil && kind == KindClass {
 					if gf.extends == nil {
 						gf.extends = map[string]string{}
 					}
 					gf.extends[s.ID] = m[1]
 				}
+				for _, re := range sp.supertypes {
+					if m := re.FindStringSubmatch(line); m != nil {
+						gf.addSupertypes(s.ID, typeList(m[1])...)
+					}
+				}
 			}
 			scopes = append(scopes, scope{sym: s, end: end})
 			break
 		}
+	}
+	if sp.extensionBlock != nil {
+		qualifyExtensions(gf, sp.extensionBlock)
 	}
 	// De-duplicate IDs (overloads) by suffixing the line.
 	seen := map[string]bool{}

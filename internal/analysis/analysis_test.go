@@ -44,6 +44,8 @@ func testLang(p string) string {
 		return "kotlin"
 	case ".rs":
 		return "rust"
+	case ".scala":
+		return "scala"
 	case ".mod":
 		return "go.mod"
 	}

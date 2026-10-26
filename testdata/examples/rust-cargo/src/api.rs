@@ -2,17 +2,17 @@
 
 use crate::notify;
 use crate::order::{self, Order};
-use crate::store::MemoryStore;
+use crate::store::Store;
 
 /// Serves order requests from a store.
 pub struct Handler {
-    store: MemoryStore,
+    store: Box<dyn Store>,
 }
 
 impl Handler {
     /// Creates a handler backed by store.
-    pub fn new(store: MemoryStore) -> Self {
-        Handler { store }
+    pub fn new(store: impl Store + 'static) -> Self {
+        Handler { store: Box::new(store) }
     }
 
     /// Validates, prices, stores and announces an order; returns a status line.
@@ -57,6 +57,7 @@ fn parse(body: &str) -> Option<Order> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::store::MemoryStore;
 
     #[test]
     fn create_order_rejects_malformed_body() {

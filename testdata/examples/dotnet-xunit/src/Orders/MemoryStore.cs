@@ -1,7 +1,7 @@
 namespace Shop;
 
 /// <summary>Keeps orders in memory.</summary>
-public class MemoryStore
+public class MemoryStore : IStore
 {
     private readonly Dictionary<string, Order> _orders = new();
 

@@ -129,7 +129,7 @@ var examples = []exampleCase{
 		validate: "validate", file: "orders/order.py", edit: proposals.Edit{Old: "if o.qty > 1000:", New: "if o.qty > 500:"}, caller: "create_order", callerStatus: StatusCaller,
 	},
 	{
-		name: "java-maven", framework: "junit", tests: 4, covFiles: 5,
+		name: "java-maven", framework: "junit", tests: 4, covFiles: 6,
 		funcs: map[string]fnExpect{
 			"Orders.validate":       {cover: "partial", tested: true, callers: 2},
 			"Orders.total":          {cover: "full", tested: true, callers: 3}, // OrderHandler, a test, and grandTotal through Orders::total
@@ -661,6 +661,70 @@ func TestExampleRubyParenless(t *testing.T) {
 			t.Errorf("%s: %s should call %s: %+v", e.how, e.from, e.to, ix.Callees(e.from))
 		}
 	}
+}
+
+// TestExampleInterfaceDispatch pins that a handler calling its store
+// through an interface or trait reaches the declaration, which dispatches
+// to MemoryStore's method: Trace to MemoryStore.save goes through the
+// dispatch edge. Without dispatch the call matches save by name among the
+// declaration and MemoryStore's, a marked guess.
+func TestExampleInterfaceDispatch(t *testing.T) {
+	ctx := context.Background()
+	for _, c := range []struct{ example, from, iface, method, impl, cls string }{
+		{"java-maven", "h:src/main/java/com/example/orders/OrderHandler.java#OrderHandler.createOrder", "h:src/main/java/com/example/orders/Store.java#Store",
+			"save", "h:src/main/java/com/example/orders/MemoryStore.java#MemoryStore.save", "h:src/main/java/com/example/orders/MemoryStore.java#MemoryStore"},
+		{"dotnet-xunit", "h:src/Orders/OrderHandler.cs#OrderHandler.CreateOrderAsync", "h:src/Orders/IStore.cs#IStore",
+			"Save", "h:src/Orders/MemoryStore.cs#MemoryStore.Save", "h:src/Orders/MemoryStore.cs#MemoryStore"},
+		{"rust-cargo", "h:src/api.rs#Handler.create_order", "h:src/store.rs#Store",
+			"save", "h:src/store.rs#MemoryStore.save", "h:src/store.rs#MemoryStore"},
+	} {
+		s, rt := openExample(t, c.example)
+		ix, err := s.Index(ctx, rt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decl := c.iface + "." + c.method
+		if d := ix.Symbols[decl]; d == nil || !d.Abstract {
+			t.Errorf("%s: %s should be an abstract declaration: %+v", c.example, decl, d)
+		}
+		if !hasCallee(ix, c.cls, c.iface, analysis.EdgeImplement) {
+			t.Errorf("%s: %s should implement %s", c.example, c.cls, c.iface)
+		}
+		if !hasCallee(ix, decl, c.impl, analysis.EdgeDispatch) {
+			t.Errorf("%s: %s should dispatch to %s", c.example, decl, c.impl)
+		}
+		for _, e := range ix.Callees(c.from) {
+			if e.To == c.impl || e.To == decl && e.Guessed {
+				t.Errorf("%s: %s should call %s through the interface, not guess: %+v", c.example, c.from, decl, e)
+			}
+		}
+		if !hasCallee(ix, c.from, decl, analysis.EdgeCall) {
+			t.Errorf("%s: %s should call %s: %+v", c.example, c.from, decl, ix.Callees(c.from))
+		}
+		g, err := s.TraceTo(ctx, rt, c.impl, 6)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var path []string
+		for _, e := range g.Edges {
+			if e.From == c.from && e.To == decl || e.From == decl && e.To == c.impl && e.Kind == string(analysis.EdgeDispatch) {
+				path = append(path, e.From)
+			}
+		}
+		if len(path) != 2 {
+			t.Errorf("%s: Trace to %s should go %s → %s → dispatch; edges %+v", c.example, c.impl, c.from, decl, g.Edges)
+		}
+	}
+}
+
+// hasCallee reports whether from has an edge of kind to to.
+func hasCallee(ix *analysis.Index, from, to string, kind analysis.EdgeKind) bool {
+	for _, e := range ix.Callees(from) {
+		if e.To == to && e.Kind == kind {
+			return true
+		}
+	}
+	return false
 }
 
 // TestExampleRubyHelpers pins that a helper defined inside a describe

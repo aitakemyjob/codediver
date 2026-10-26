@@ -3,10 +3,10 @@ namespace Shop;
 /// <summary>Handles order requests: "id=o1;sku=A1;qty=2;price=100".</summary>
 public class OrderHandler
 {
-    private readonly MemoryStore _store;
+    private readonly IStore _store;
 
     /// <summary>Creates a handler backed by store.</summary>
-    public OrderHandler(MemoryStore store)
+    public OrderHandler(IStore store)
     {
         _store = store;
     }

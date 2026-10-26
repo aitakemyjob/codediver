@@ -7,8 +7,10 @@ import (
 
 // Receiver types: for `recv.method()`, find recv's class where the code
 // writes it down (`const s = new SqlStore()`, `(s: SqlStore)`,
-// `private store: SqlStore`, `s = Store()`, `self.store = Store()`) and
-// link the call to that class's method instead of any same-named one.
+// `private store: SqlStore`, `s = Store()`, `self.store = Store()`,
+// `private final Store store;`) and link the call to that class's method
+// instead of any same-named one. A call through an interface or trait
+// links to its declaration, which dispatches to the implementations.
 // Languages opt in with a typeHints entry.
 
 // typePattern finds a name and its class on one line: capture group name
@@ -35,6 +37,9 @@ type typeHints struct {
 	// paramModifiers mark constructor parameters that are also attributes
 	// (TypeScript's `constructor(private store: SqlStore)`).
 	paramModifiers map[string]bool
+	// unwrap reduces a written-down type to the type whose methods are
+	// called (Rust's `&mut dyn Store` and `Box<dyn Store>` are Store).
+	unwrap func(string) string
 }
 
 // receiverHints holds the languages whose receivers are typed. A new
@@ -44,6 +49,9 @@ var receiverHints = map[string]*typeHints{
 	"javascript": tsHints,
 	"python":     pyHints,
 	"ruby":       rbHints,
+	"java":       jvmHints,
+	"csharp":     jvmHints,
+	"rust":       rsHints,
 }
 
 var rbHints = &typeHints{
@@ -90,6 +98,61 @@ var pyHints = &typeHints{
 	},
 }
 
+// jvmHints cover Java and C#: `Store s = …;`, `var s = new MemoryStore()`,
+// fields `private final Store store;` and `_store = store;` in a constructor.
+var jvmHints = &typeHints{
+	locals: []typePattern{
+		{rx(`(?:^\s*|[(;{]\s*|\bfinal\s+)([A-Z][\w.]*(?:<[^>]*>)?\??)\s+([a-z_]\w*)\s*=`), 2, 1},
+		{rx(`\bvar\s+([a-z_]\w*)\s*=\s*new\s+([A-Z][\w.]*)`), 1, 2},
+	},
+	fields: []typePattern{
+		{rx(`^\s*(?:(?:private|public|protected|internal|readonly|final|static)\s+)*([A-Z][\w.]*(?:<[^>]*>)?\??)\s+(_?[A-Za-z]\w*)\s*(?:=|;)`), 2, 1},
+	},
+	copies: []typePattern{
+		{rx(`^\s*(?:this\.)?(_?[A-Za-z]\w*)\s*=\s*([a-z_]\w*)\s*;\s*$`), 1, 2},
+	},
+}
+
+// rsHints cover Rust: `let s = MemoryStore::new()`, `let s: Box<dyn Store>`
+// and struct fields `store: Box<dyn Store>,`.
+var rsHints = &typeHints{
+	locals: []typePattern{
+		{rx(`\blet\s+(?:mut\s+)?([a-z_]\w*)\s*=\s*([A-Z]\w*)\s*(?:::\s*\w+\s*\(|\{)`), 1, 2},
+		{rx(`\blet\s+(?:mut\s+)?([a-z_]\w*)\s*:\s*([^=;]+)`), 1, 2},
+	},
+	fields: []typePattern{
+		{rx(`^\s*(?:pub(?:\([^)]*\))?\s+)?([a-z_]\w*)\s*:\s*(.+?)\s*,?\s*$`), 1, 2},
+	},
+	unwrap: rustType,
+}
+
+// rustWrappers are smart pointers whose methods are their contents'.
+var rustWrappers = rx(`^(?:Box|Rc|Arc|RefCell|Mutex|Option)<(.*)>$`)
+
+// rustType strips references, lifetimes, dyn/impl and pointer wrappers:
+// `&'a mut dyn Store`, `Box<dyn Store>` and `impl Store` are Store.
+func rustType(t string) string {
+	for {
+		t = strings.TrimSpace(t)
+		prev := t
+		t = strings.TrimPrefix(t, "&")
+		if strings.HasPrefix(t, "'") {
+			if i := strings.IndexByte(t, ' '); i > 0 {
+				t = t[i:]
+			}
+		}
+		for _, w := range []string{"mut ", "dyn ", "impl "} {
+			t = strings.TrimPrefix(strings.TrimSpace(t), w)
+		}
+		if m := rustWrappers.FindStringSubmatch(t); m != nil {
+			t = m[1]
+		}
+		if t == prev {
+			return strings.ReplaceAll(t, "::", ".")
+		}
+	}
+}
+
 // maxExtendsDepth bounds how far a method is looked up through `extends`.
 const maxExtendsDepth = 5
 
@@ -102,22 +165,25 @@ type receiverFinder struct {
 	files   map[string]*genericFile
 	// classes maps file → class name → class symbol.
 	classes map[string]map[string]*Symbol
+	// types maps a name to the classes, structs and interfaces so named.
+	types   map[string][]*Symbol
 	locals  map[*Symbol]map[string]string
 	members map[string]map[string]string
 }
 
 // newReceiverFinder indexes the classes of the given files.
 func newReceiverFinder(byName map[string][]*Symbol, modules *moduleGraph, gfiles []*genericFile) *receiverFinder {
-	f := &receiverFinder{byName: byName, modules: modules, files: map[string]*genericFile{}, classes: map[string]map[string]*Symbol{},
+	f := &receiverFinder{byName: byName, modules: modules, files: map[string]*genericFile{}, classes: map[string]map[string]*Symbol{}, types: map[string][]*Symbol{},
 		locals: map[*Symbol]map[string]string{}, members: map[string]map[string]string{}}
 	for _, gf := range gfiles {
 		f.files[gf.path] = gf
 		for _, s := range gf.syms {
-			if s.Kind == KindClass {
+			if isTypeKind(s.Kind) {
 				if f.classes[gf.path] == nil {
 					f.classes[gf.path] = map[string]*Symbol{}
 				}
 				f.classes[gf.path][s.Name] = s
+				f.types[s.Name] = append(f.types[s.Name], s)
 			}
 		}
 	}
@@ -134,6 +200,9 @@ func (f *receiverFinder) find(c callSite) (match, bool) {
 	typ := f.localTypes(c.file, c.from, hints)[c.recv]
 	if typ == "" && c.from.Parent != "" {
 		typ = f.memberTypes(c.from.Parent, hints)[c.recv]
+	}
+	if hints.unwrap != nil {
+		typ = hints.unwrap(typ)
 	}
 	if typ == "" {
 		return match{}, false
@@ -237,17 +306,17 @@ func (f *receiverFinder) symbol(id string) *Symbol {
 	return nil
 }
 
-// classNamed resolves a written-down type to a class in the repository:
-// through gf's imports first, then a class in the same file, then the
-// only class of that name. Unions with None/null, Optional[…] and generic
-// arguments are stripped; anything else (arrays, other unions) is not a
-// single class.
+// classNamed resolves a written-down type to a class, struct, interface or
+// trait in the repository: through gf's imports first, then one in the
+// same file, then the only one of that name in gf's language. Unions with
+// None/null, Optional[…] and generic arguments are stripped; anything else
+// (arrays, other unions) is not a single type.
 func (f *receiverFinder) classNamed(gf *genericFile, typ string) *Symbol {
 	qual, name := splitType(cleanType(strings.ReplaceAll(typ, "::", ".")))
 	if name == "" {
 		return nil
 	}
-	isClass := func(s *Symbol) bool { return s != nil && s.Kind == KindClass }
+	isClass := func(s *Symbol) bool { return s != nil && isTypeKind(s.Kind) }
 	if t, ok := f.modules.target(gf.path, qual, name); ok && isClass(t) {
 		return t
 	}
@@ -257,8 +326,8 @@ func (f *receiverFinder) classNamed(gf *genericFile, typ string) *Symbol {
 		return s
 	}
 	var only *Symbol
-	for _, s := range f.byName[name] {
-		if isClass(s) {
+	for _, s := range f.types[name] {
+		if isClass(s) && s.Language == gf.lang {
 			if only != nil {
 				return nil
 			}
@@ -266,6 +335,12 @@ func (f *receiverFinder) classNamed(gf *genericFile, typ string) *Symbol {
 		}
 	}
 	return only
+}
+
+// isTypeKind reports whether symbols of kind k have methods: classes,
+// structs, and interfaces and traits.
+func isTypeKind(k SymbolKind) bool {
+	return k == KindClass || k == KindStruct || k == KindInterface
 }
 
 // methodOf finds the method name on cls, or on the classes it extends.

@@ -1,8 +1,9 @@
 # rust-cargo
 
 A small orders service in Rust with `cargo test`: `order` (validation and
-pricing), `store::MemoryStore`, `notify::send` (a webhook that's hard to
-test) and `api::Handler` (request handling). Tests sit next to the code in
+pricing), a `store::Store` trait and the `store::MemoryStore` implementing
+it, `notify::send` (a webhook that's hard to
+test) and `api::Handler` (request handling, through a `Box<dyn Store>`). Tests sit next to the code in
 `#[cfg(test)]` modules. See [../README.md](../README.md) for what to try and
 what the gaps are.
 

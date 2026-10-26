@@ -2,10 +2,10 @@ package com.example.orders;
 
 /** Handles order requests: "id=o1;sku=A1;qty=2;price=100". */
 public class OrderHandler {
-    private final MemoryStore store;
+    private final Store store;
 
     /** Creates a handler backed by store. */
-    public OrderHandler(MemoryStore store) {
+    public OrderHandler(Store store) {
         this.store = store;
     }
 

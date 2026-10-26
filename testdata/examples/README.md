@@ -97,7 +97,7 @@ every language and the known gaps, see
 | Calls from module-level code (`render(<App />)` in `main.tsx`) | ✓ `var ErrX = errors.New(…)`: the file's `<module>` calls it | ✓ `main.tsx <module>` calls `App` | n/a (none in the example) | n/a |
 | Control flow: closures as their own flow (`sort.Slice` in `ListOrders`), `goto` (`notify.Send`'s retry); dispatch through a generic interface (`store.Repo[order.Order]` → `Memory.Get`) | ✓ | n/a (Go only) | n/a (Go only) | n/a (Go only) |
 | Functions passed as values (`ref` edges) | ✓ | ✓ `placeOrder` passes `rememberOrder` to `.then` | ✓ `key=_by_id`, `Thread(target=replay)` in `maintenance.py` | ✓ `Orders::total` in `grandTotal` |
-| Same method name on unrelated types | ✓ type-aware | through the receiver's written-down class (`giftSummary(cart: GiftCart)` and `Checkout`'s `private cart: GiftCart` reach `GiftCart.subtotal`, not `Cart.subtotal`); otherwise built-in names (`get`, `push`…) only link when the receiver looks like the class | through the receiver's class (`create_order`'s `store: MemoryStore` and `audit: AuditLog \| None` each reach their own `save`); otherwise as TypeScript | name matching |
+| Same method name on unrelated types | ✓ type-aware | through the receiver's written-down class (`giftSummary(cart: GiftCart)` and `Checkout`'s `private cart: GiftCart` reach `GiftCart.subtotal`, not `Cart.subtotal`); otherwise built-in names (`get`, `push`…) only link when the receiver looks like the class | through the receiver's class (`create_order`'s `store: MemoryStore` and `audit: AuditLog \| None` each reach their own `save`); otherwise as TypeScript | through the receiver's type: `OrderHandler`'s `private final Store store;` reaches the `Store` interface, which dispatches to `MemoryStore.save` |
 | Coverage import | ✓ coverprofile | ✓ LCOV | ✓ LCOV | ✓ JaCoCo |
 | Testability hints | ✓ | ✓ | ✓ | ✓ |
 | One suite and report per component in a monorepo | ✓ | ✓ | ✓ | n/a |
@@ -108,6 +108,7 @@ every language and the known gaps, see
 | Tests discovered | ✓ (`#[test]` in `#[cfg(test)]` modules) | ✓ (`[Fact]`, `[Theory]`) | ✓ (describe/it) |
 | Test → code mapping | ✓ (`MemoryStore::new()` → `new`; test modules aren't code under test) | ✓ (`store.Save` → `MemoryStore.Save`: the receiver names the class) | ✓ (`Foo.new` → `initialize`; helpers inside `describe`) |
 | Call edges | name matching (`~`) | name matching (`~`); `int.Parse` isn't the repo's `Parse` | name matching (`~`) |
+| Calls through an interface or trait: `Handler`'s `store: Box<dyn Store>` / `OrderHandler`'s `IStore _store` reach the declaration, which dispatches to `MemoryStore`'s method (`implements` and `dispatch` edges; Trace to `MemoryStore.save` goes through it) | ✓ `impl Store for MemoryStore` | ✓ `MemoryStore : IStore` | n/a |
 | Calls without parentheses (`@store.save order`) | n/a | n/a | ✓ (`@store.save order`, `count.zero?`, `@store.empty?` in `summary`) |
 | Calls inside string interpolation (`"#{timestamp}"`) | n/a (none in the example) | n/a (none in the example) | ✓ (a bare name is a call when the class has that method) |
 | Coverage import | ✓ LCOV | ✓ Cobertura | ✓ LCOV |

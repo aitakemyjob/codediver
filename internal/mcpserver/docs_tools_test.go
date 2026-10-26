@@ -29,7 +29,7 @@ func TestLanguageSupport(t *testing.T) {
 			t.Errorf("typescript answer includes %q", other)
 		}
 	}
-	h.mustCall("get_language_support", map[string]any{"language": "csharp"}, "| **C#** |", "### Java, Kotlin, C# and Rust", "interface method declarations")
+	h.mustCall("get_language_support", map[string]any{"language": "csharp"}, "| **C#** |", "### Java, Kotlin, C# and Rust", "**Interface dispatch (Java, C#, Kotlin, Rust):**")
 	h.mustCall("get_language_support", map[string]any{"language": "lua"}, "| **Swift, Dart, Lua** |", "Nothing beyond the general limits")
 	if out, isErr := h.call("get_language_support", map[string]any{"language": "cobol"}); !isErr || !strings.Contains(out, "one of: go, typescript") {
 		t.Errorf("unknown language = %q", out)
