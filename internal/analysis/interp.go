@@ -1,9 +1,6 @@
 package analysis
 
-import (
-	"regexp"
-	"strings"
-)
+import "strings"
 
 // String interpolation: the code inside `"#{f(x)}"`, `${…}`, `\(…)` or an
 // f-string field is code, not string text, so masking keeps it. Each
@@ -125,12 +122,6 @@ func bracketEnd(b []byte, open int) int {
 		}
 	}
 	return len(b) - 1
-}
-
-// bareInterpCalls finds interpolations that are a bare method name, which
-// Ruby calls without parentheses: `"sent at #{timestamp}"`.
-var bareInterpCalls = map[string]*regexp.Regexp{
-	"ruby": regexp.MustCompile(`#\{\s*([a-z_]\w*[?!]?)\s*\}`),
 }
 
 // sameClassMethod returns the method among cands defined on from's own

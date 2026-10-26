@@ -24,6 +24,13 @@ module Orders
       @store.find(id)&.to_h&.to_s || '404 not found'
     end
 
+    # A one-line status: both store calls are written without parentheses.
+    def summary
+      return 'no orders' if @store.empty?
+
+      "#{@store.count} orders"
+    end
+
     private
 
     # Reads key=value pairs separated by semicolons; nil if malformed.

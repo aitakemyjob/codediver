@@ -1757,3 +1757,96 @@ func TestValueNames(t *testing.T) {
 		t.Errorf("valueNames = %v", names)
 	}
 }
+
+// Ruby calls without parentheses: receiver calls go through the usual
+// strategies, bare names link only to the caller's own class, and local
+// variables, parameters, hash keys and attribute writes aren't calls (#99).
+func TestGenericRubyParenless(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"store.rb": `class Store
+  def save(order)
+    @items << order
+  end
+
+  def count
+    @items.size
+  end
+
+  def empty?
+    count.zero?
+  end
+
+  def report
+    "#{count} stored"
+  end
+end
+`,
+		"cache.rb": `class Cache
+  def save(order)
+  end
+end
+`,
+		"handler.rb": `class Handler
+  def initialize(store)
+    @store = store
+    @cache = Cache.new
+  end
+
+  def create(order)
+    validate order
+    @store.save order
+    @cache.save order
+    self.notify
+    save! if order
+  end
+
+  def check(validate)
+    total = 1
+    send_it = { validate: 1, total: 2 }
+    order.status = :done
+    order.sku.to_s.empty?
+    [1].each { |count| count + total }
+  end
+
+  def validate(order)
+  end
+
+  def notify
+  end
+
+  def save!
+  end
+end
+`,
+	})
+	lang := func(p string) string { return "ruby" }
+	ix := Build(root, files, lang)
+	callees := func(from string) map[string]bool {
+		out := map[string]bool{}
+		for _, e := range ix.Callees(from) {
+			out[e.To] = true
+		}
+		return out
+	}
+	create := callees("h:handler.rb#Handler.create")
+	for _, to := range []string{"h:handler.rb#Handler.validate", "h:handler.rb#Handler.notify", "h:handler.rb#Handler.save!", "h:cache.rb#Cache.save"} {
+		if !create[to] {
+			t.Errorf("Handler.create should call %s: %v", to, create)
+		}
+	}
+	// @store is untyped: store.save matches by name among Store.save and
+	// Cache.save; @cache = Cache.new is typed, so it doesn't.
+	if !create["h:store.rb#Store.save"] && !create["h:cache.rb#Cache.save"] {
+		t.Errorf("@store.save order should link to a save: %v", create)
+	}
+	if c := callees("h:handler.rb#Handler.check"); len(c) != 0 {
+		t.Errorf("parameters, locals, hash keys, attribute writes, block params and chained built-ins aren't calls: %v", c)
+	}
+	empty := callees("h:store.rb#Store.empty?")
+	if !empty["h:store.rb#Store.count"] {
+		t.Errorf("count.zero? calls count: %v", empty)
+	}
+	if r := callees("h:store.rb#Store.report"); !r["h:store.rb#Store.count"] {
+		t.Errorf(`"#{count}" calls count: %v`, r)
+	}
+}

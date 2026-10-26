@@ -45,6 +45,11 @@ every merged pull request.
   `Orders::total`) gets a `ref` edge from the function passing it, when the
   name resolves to a function, so callbacks no longer look uncalled and
   Trace to here reaches through them.
+- **Ruby calls without parentheses** (#99): `@store.save order`,
+  `@store.empty?`, `save!`, bare `validate order` and `count.zero?` are
+  calls. Receiver calls resolve through the receiver's written-down class
+  (`@store = MemoryStore.new`) or by name; bare names link only to the
+  caller's own class's methods, never to parameters or locals.
 - **Calls on typed receivers** (#67): in TypeScript, JavaScript and
   Python, `s.save()` links to the `save` of `s`'s class where the code
   writes it down (`new SqlStore()`, typed parameters and fields,
