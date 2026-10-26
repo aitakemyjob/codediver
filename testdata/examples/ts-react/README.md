@@ -9,7 +9,9 @@ constructor and methods, a class field holding an arrow (`clear`),
 `super.subtotal()`, `cart?.subtotal()` and a multi-line import.
 `giftSummary` and `cart/checkout.ts`'s `Checkout` call `subtotal()` on a
 receiver typed `GiftCart`, so they reach `GiftCart.subtotal` rather than
-`Cart`'s. `pages/CartPage.tsx` is an anonymous default export, and `api.ts` groups
+`Cart`'s. `api.placeOrder` passes `rememberOrder` to `.then` without calling it,
+so **Trace to here** on `rememberOrder` reaches `placeOrder` through a `ref`
+edge. `pages/CartPage.tsx` is an anonymous default export, and `api.ts` groups
 its endpoints in an object literal (`ordersApi`). `receipt/` and
 `pages/ReceiptPage.tsx` show calls that only resolve through imports:
 `cart/format.ts` and `receipt/format.ts` both export `format`, and

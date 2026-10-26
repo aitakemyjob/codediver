@@ -650,7 +650,9 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 	}
 
 	// Call edges: through imports where they resolve, else by name.
-	finder := newFinderChain(byName, newModuleGraph(gfiles, fileSet), gfiles)
+	modules := newModuleGraph(gfiles, fileSet)
+	finder := newFinderChain(byName, modules, gfiles)
+	refs := newValueRefs(byName, modules, gfiles)
 	// scan records the calls on line ln (masked text) as made by from.
 	scan := func(from *Symbol, gf *genericFile, ln int, text string) {
 		for _, m := range callRe.FindAllStringSubmatch(text, -1) {
@@ -713,6 +715,10 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 			for _, m := range componentRefRe.FindAllStringSubmatch(text, -1) {
 				link(m[1]+m[2]+m[3], EdgeRef)
 			}
+		}
+		// Functions passed as values (callbacks) are references.
+		for _, t := range refs.find(from, gf, text) {
+			ix.addEdge(Edge{From: from.ID, To: t.ID, Kind: EdgeRef, Lines: []int{ln}, Heuristic: true}, merge)
 		}
 	}
 	for _, gf := range gfiles {

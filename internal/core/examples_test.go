@@ -132,7 +132,7 @@ var examples = []exampleCase{
 		name: "java-maven", framework: "junit", tests: 4, covFiles: 5,
 		funcs: map[string]fnExpect{
 			"Orders.validate":       {cover: "partial", tested: true, callers: 2},
-			"Orders.total":          {cover: "full", tested: true, callers: 2},
+			"Orders.total":          {cover: "full", tested: true, callers: 3}, // OrderHandler, a test, and grandTotal through Orders::total
 			"Orders.unitPrice":      {cover: "partial", tested: true, callers: 1},
 			"Orders.legacyTotal":    {cover: "0", callers: 0},
 			"OrderHandler.getOrder": {cover: "0", callers: 0},
@@ -596,6 +596,39 @@ func TestExampleReceiverTypes(t *testing.T) {
 	}
 	if !guessed {
 		t.Errorf("replay's untyped target.save() should be a marked guess: %+v", ix.Callees("h:orders/maintenance.py#replay"))
+	}
+}
+
+// TestExampleCallbacks pins functions the examples pass as values (#68):
+// each gets a ref edge from the function passing it, so Trace to here
+// reaches a callback used only through .then.
+func TestExampleCallbacks(t *testing.T) {
+	ctx := context.Background()
+	for _, c := range []struct{ example, from, to, how string }{
+		{"ts-react", "h:src/api.ts#placeOrder", "h:src/api.ts#rememberOrder", "createOrder(o).then(rememberOrder)"},
+		{"python-api", "h:orders/maintenance.py#replay", "h:orders/maintenance.py#_by_id", "sorted(orders, key=_by_id)"},
+		{"python-api", "h:orders/maintenance.py#replay_in_background", "h:orders/maintenance.py#replay", "threading.Thread(target=replay)"},
+		{"java-maven", "h:src/main/java/com/example/orders/Orders.java#Orders.grandTotal", "h:src/main/java/com/example/orders/Orders.java#Orders.total", "mapToInt(Orders::total)"},
+	} {
+		s, rt := openExample(t, c.example)
+		ix, err := s.Index(ctx, rt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, e := range ix.Callers(c.to) {
+			found = found || e.From == c.from && e.Kind == analysis.EdgeRef
+		}
+		if !found {
+			t.Errorf("%s: %s should reference %s: %+v", c.how, c.from, c.to, ix.Callers(c.to))
+		}
+		traced := false
+		for _, n := range ix.TraceTo(c.to, 6, 200).Nodes {
+			traced = traced || n.ID == c.from
+		}
+		if !traced {
+			t.Errorf("%s: Trace to %s should reach %s", c.how, c.to, c.from)
+		}
 	}
 }
 

@@ -1642,3 +1642,118 @@ func TestCleanType(t *testing.T) {
 		}
 	}
 }
+
+// Functions passed as values become ref edges from the function passing
+// them, when the name resolves to a function; parameters, literals and
+// import lists don't (#68).
+func TestGenericValueRefs(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"src/fmt.ts": "export function format(x: number) { return String(x) }\n",
+		"src/use.ts": `import { format } from './fmt'
+
+function render(v: unknown) {}
+function notify() {}
+function create() {}
+function tick() {}
+
+export class View {
+  run(items: number[], emitter: any, p: Promise<unknown>) {
+    items.map(format)
+    p.then(render).then(this.done)
+    emitter.on('done', notify)
+    setTimeout(tick, 10)
+    return { handler: create, other: null }
+  }
+  done() {}
+}
+
+export function shadow(format: (x: number) => string, xs: number[]) {
+  return xs.map(format)
+}
+`,
+		"app/jobs.py": `import threading
+
+
+def keyfn(x):
+    return x
+
+
+def run():
+    pass
+
+
+class Worker:
+    def start(self, xs):
+        sorted(xs, key=keyfn)
+        threading.Thread(target=run)
+        list(map(self.step, xs))
+        if xs == run:
+            pass
+
+    def step(self, x):
+        return x
+`,
+		"src/Store.java": `class Store {
+  void save(String s) {}
+}
+class Batch {
+  void flush(java.util.List<String> xs) {
+    xs.forEach(this::log);
+    xs.forEach(Store::save);
+  }
+  void log(String s) {}
+}
+`,
+	})
+	lang := func(p string) string {
+		if strings.HasSuffix(p, ".java") {
+			return "java"
+		}
+		return testLang(p)
+	}
+	ix := Build(root, files, lang)
+	refs := func(from string) map[string]bool {
+		out := map[string]bool{}
+		for _, e := range ix.Callees(from) {
+			if e.Kind == EdgeRef {
+				out[e.To] = true
+			}
+		}
+		return out
+	}
+	run := refs("h:src/use.ts#View.run")
+	for _, to := range []string{"h:src/fmt.ts#format", "h:src/use.ts#render", "h:src/use.ts#View.done", "h:src/use.ts#notify", "h:src/use.ts#tick", "h:src/use.ts#create"} {
+		if !run[to] {
+			t.Errorf("View.run should reference %s: %v", to, run)
+		}
+	}
+	if r := refs("h:src/use.ts#shadow"); len(r) != 0 {
+		t.Errorf("a parameter named format is not the imported function: %v", r)
+	}
+	if r := refs("mod:src/use.ts"); len(r) != 0 {
+		t.Errorf("an import list isn't a value: %v", r)
+	}
+	start := refs("h:app/jobs.py#Worker.start")
+	for _, to := range []string{"h:app/jobs.py#keyfn", "h:app/jobs.py#run", "h:app/jobs.py#Worker.step"} {
+		if !start[to] {
+			t.Errorf("Worker.start should reference %s: %v", to, start)
+		}
+	}
+	flush := refs("h:src/Store.java#Batch.flush")
+	for _, to := range []string{"h:src/Store.java#Batch.log", "h:src/Store.java#Store.save"} {
+		if !flush[to] {
+			t.Errorf("Batch.flush should reference %s: %v", to, flush)
+		}
+	}
+}
+
+func TestValueNames(t *testing.T) {
+	got := valueNames("f(a, this.b) == c; g(x == y, z >= w) {k: v}", "(,:=", ",)}")
+	var names []string
+	for _, n := range got {
+		names = append(names, n.recv+"."+n.name)
+	}
+	if strings.Join(names, " ") != ".a this.b .v" {
+		t.Errorf("valueNames = %v", names)
+	}
+}

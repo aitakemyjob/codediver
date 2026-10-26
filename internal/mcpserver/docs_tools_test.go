@@ -20,7 +20,7 @@ func TestLanguageSupport(t *testing.T) {
 	// and the trace section, with the issue links still resolving.
 	ts := h.mustCall("get_language_support", map[string]any{"language": "ts"}, "# Language support: TypeScript",
 		"## Two analyzers", "## The `~` marker", "| **TypeScript, JavaScript** |", "### TypeScript and JavaScript",
-		"**Object literals:**", "## Trace view", "[#68]: https://")
+		"**Object literals:**", "## Trace view", "[#70]: https://")
 	if !strings.Contains(ts, "## Support matrix\n\n| | Symbols") {
 		t.Errorf("matrix header missing:\n%s", ts)
 	}

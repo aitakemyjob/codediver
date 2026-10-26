@@ -22,3 +22,18 @@ export const ordersApi = {
     return (await res.json()) as Order[];
   },
 };
+
+/** Remembers the last order's id, so the page can link back to it. */
+export function rememberOrder(id: string): string {
+  sessionStorage.setItem('lastOrder', id);
+  return id;
+}
+
+/**
+ * Sends a new order and remembers its id. rememberOrder is only passed to
+ * .then, never called here: CodeDiver records a ref edge, so it isn't
+ * shown as uncalled.
+ */
+export function placeOrder(o: Order): Promise<string> {
+  return createOrder(o).then(rememberOrder);
+}
