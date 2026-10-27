@@ -8,6 +8,77 @@ every merged pull request.
 
 ## [Unreleased]
 
+### Changed
+
+- **Callbacks are references** (#68): a function passed as a value
+  (`items.map(format)`, `promise.then(render)`, `{ handler: create }`,
+  `sorted(xs, key=keyfn)`, `Thread(target=run)`, Java's `this::save` and
+  `Orders::total`) gets a `ref` edge from the function passing it, when the
+  name resolves to a function, so callbacks no longer look uncalled and
+  Trace to here reaches through them.
+- **Ruby calls without parentheses** (#99): `@store.save order`,
+  `@store.empty?`, `save!`, bare `validate order` and `count.zero?` are
+  calls. Receiver calls resolve through the receiver's written-down class
+  (`@store = MemoryStore.new`) or by name; bare names link only to the
+  caller's own class's methods, never to parameters or locals.
+- **Calls on typed receivers** (#67): in TypeScript, JavaScript and
+  Python, `s.save()` links to the `save` of `s`'s class where the code
+  writes it down (`new SqlStore()`, typed parameters and fields,
+  constructor parameter properties, `s = Store()`, annotated parameters
+  and attributes, `self.store = …` in `__init__`), following `extends`,
+  instead of the first same-named method. Calls still matched by name
+  among several definitions are marked *guessed*: a dotted *guess?* edge
+  in the app, and *(guessed …)* with a note in agent tools.
+- **Interface dispatch for Java, C#, Kotlin and Rust** (#100): interface method
+  declarations and bodiless trait methods are abstract symbols, a class
+  listing an interface (`implements Store`, `: IStore`, `impl Store for
+  MemoryStore`) implements it, and each interface method dispatches to
+  the class's method. Calls on typed fields, parameters and locals
+  (`private final Store store;`, `store: Box<dyn Store>`) link to the
+  type's method, so Trace to `MemoryStore.save` goes through the
+  interface. Kotlin and Scala extension functions are qualified by the
+  type they extend (`String.slug`).
+
+## [0.2.1] — 2026-10-24
+
+### Changed
+- **Go control flow and generics** (#74): calls through generic interfaces
+  (`Repo[int]`) dispatch to the types implementing that instantiation,
+  generic ones included. In the Logic view, a block holding a closure
+  opens the closure's own control flow, with a breadcrumb back; `goto`
+  connects to its label; and `t.Fatal`, `FailNow` and `Skip*` end a test
+  like `panic` does. `get_function_flow` shows closures nested under
+  their block.
+- **Module-level code is a caller** (#69): each file's top-level code is
+  a `<module>` symbol that calls what it calls. That covers TypeScript,
+  JavaScript and Python module statements (`render(<App />)`,
+  `if __name__ == "__main__": main()`) and Go package-level `var`
+  initializers. `App` in the `ts-react` example now has `main.tsx
+  <module>` as its caller. Modules are entry points in traces and the
+  blast radius, and have no test status. Test files' top level isn't
+  counted.
+- **TypeScript and JavaScript calls resolve through imports** (#65): a
+  call links to the function its file imports instead of any same-named
+  function, through named, aliased, default and namespace imports,
+  re-exports and barrels, and CommonJS `require`. Calls that don't go
+  through a resolvable import still match by name.
+- **Python calls resolve through imports** (#66): aliases (`import … as`,
+  `from … import … as`), module-qualified calls (`u.fmt()`,
+  `util.fmt()`), relative imports, `from m import *` and names re-exported
+  by a package's `__init__.py` link to the definition imported, not a
+  same-named one elsewhere. The `python-api` example's receipt package
+  shows each case.
+
+### Fixed
+- **Calls inside string interpolation** (#79) in Ruby, Kotlin, C#, Swift,
+  Dart, Scala and PHP are now code, like JavaScript template literals and
+  Python f-strings already were, so they get call edges and test-to-code
+  mapping. In Ruby, a bare `"#{name}"` calls the caller's class's method
+  of that name: `Notifier.timestamp` in the `ruby-rspec` example now has
+  its caller.
+
+## [0.2.0] — 2026-10-20
+
 ### Added
 - **Example projects for Rust, C# and Ruby** (#51): `rust-cargo` (cargo
   test, cargo-llvm-cov), `dotnet-xunit` (xUnit, coverlet Cobertura) and
@@ -39,60 +110,6 @@ every merged pull request.
   report the coverage of the change.
 
 ### Changed
-- **Callbacks are references** (#68): a function passed as a value
-  (`items.map(format)`, `promise.then(render)`, `{ handler: create }`,
-  `sorted(xs, key=keyfn)`, `Thread(target=run)`, Java's `this::save` and
-  `Orders::total`) gets a `ref` edge from the function passing it, when the
-  name resolves to a function, so callbacks no longer look uncalled and
-  Trace to here reaches through them.
-- **Ruby calls without parentheses** (#99): `@store.save order`,
-  `@store.empty?`, `save!`, bare `validate order` and `count.zero?` are
-  calls. Receiver calls resolve through the receiver's written-down class
-  (`@store = MemoryStore.new`) or by name; bare names link only to the
-  caller's own class's methods, never to parameters or locals.
-- **Calls on typed receivers** (#67): in TypeScript, JavaScript and
-  Python, `s.save()` links to the `save` of `s`'s class where the code
-  writes it down (`new SqlStore()`, typed parameters and fields,
-  constructor parameter properties, `s = Store()`, annotated parameters
-  and attributes, `self.store = …` in `__init__`), following `extends`,
-  instead of the first same-named method. Calls still matched by name
-  among several definitions are marked *guessed*: a dotted *guess?* edge
-  in the app, and *(guessed …)* with a note in agent tools.
-- **Interface dispatch for Java, C#, Kotlin and Rust** (#100): interface method
-  declarations and bodiless trait methods are abstract symbols, a class
-  listing an interface (`implements Store`, `: IStore`, `impl Store for
-  MemoryStore`) implements it, and each interface method dispatches to
-  the class's method. Calls on typed fields, parameters and locals
-  (`private final Store store;`, `store: Box<dyn Store>`) link to the
-  type's method, so Trace to `MemoryStore.save` goes through the
-  interface. Kotlin and Scala extension functions are qualified by the
-  type they extend (`String.slug`).
-- **Go control flow and generics** (#74): calls through generic interfaces
-  (`Repo[int]`) dispatch to the types implementing that instantiation,
-  generic ones included. In the Logic view, a block holding a closure
-  opens the closure's own control flow, with a breadcrumb back; `goto`
-  connects to its label; and `t.Fatal`, `FailNow` and `Skip*` end a test
-  like `panic` does. `get_function_flow` shows closures nested under
-  their block.
-- **Module-level code is a caller** (#69): each file's top-level code is
-  a `<module>` symbol that calls what it calls. That covers TypeScript,
-  JavaScript and Python module statements (`render(<App />)`,
-  `if __name__ == "__main__": main()`) and Go package-level `var`
-  initializers. `App` in the `ts-react` example now has `main.tsx
-  <module>` as its caller. Modules are entry points in traces and the
-  blast radius, and have no test status. Test files' top level isn't
-  counted.
-- **TypeScript and JavaScript calls resolve through imports** (#65): a
-  call links to the function its file imports instead of any same-named
-  function, through named, aliased, default and namespace imports,
-  re-exports and barrels, and CommonJS `require`. Calls that don't go
-  through a resolvable import still match by name.
-- **Python calls resolve through imports** (#66): aliases (`import … as`,
-  `from … import … as`), module-qualified calls (`u.fmt()`,
-  `util.fmt()`), relative imports, `from m import *` and names re-exported
-  by a package's `__init__.py` link to the definition imported, not a
-  same-named one elsewhere. The `python-api` example's receipt package
-  shows each case.
 - **Blast radius:** the full caller graph is replaced by a view that
   goes by distance. Direct callers are listed first with their test
   status and coverage, and untested ones are flagged. Callers further out
@@ -113,12 +130,6 @@ every merged pull request.
   doesn't.
 
 ### Fixed
-- **Calls inside string interpolation** (#79) in Ruby, Kotlin, C#, Swift,
-  Dart, Scala and PHP are now code, like JavaScript template literals and
-  Python f-strings already were, so they get call edges and test-to-code
-  mapping. In Ruby, a bare `"#{name}"` calls the caller's class's method
-  of that name: `Notifier.timestamp` in the `ruby-rspec` example now has
-  its caller.
 - **Call graphs outside Go** (#59): definitions and calls the lexical
   analyzer missed or got wrong.
   - **TypeScript/JavaScript** (#61, #62):
@@ -261,6 +272,8 @@ walkthroughs, function logic, trace-to-here, call and dependency graphs,
 heatmaps, visual review of agent proposals, ten themes, and installers for
 macOS, Windows and Linux plus a headless server.
 
-[Unreleased]: https://github.com/aitakemyjob/codediver/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/aitakemyjob/codediver/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/aitakemyjob/codediver/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/aitakemyjob/codediver/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/aitakemyjob/codediver/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/aitakemyjob/codediver/releases/tag/v0.1.0
