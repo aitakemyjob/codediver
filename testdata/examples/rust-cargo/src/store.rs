@@ -4,6 +4,15 @@ use std::collections::HashMap;
 
 use crate::order::Order;
 
+/// Where orders are kept; the handler only knows this trait.
+pub trait Store {
+    /// Stores an order, replacing one with the same ID.
+    fn save(&mut self, o: Order);
+
+    /// Loads an order by ID.
+    fn find(&self, id: &str) -> Option<&Order>;
+}
+
 /// An in-memory order store.
 #[derive(Default)]
 pub struct MemoryStore {
@@ -15,14 +24,14 @@ impl MemoryStore {
     pub fn new() -> Self {
         Self::default()
     }
+}
 
-    /// Stores an order, replacing one with the same ID.
-    pub fn save(&mut self, o: Order) {
+impl Store for MemoryStore {
+    fn save(&mut self, o: Order) {
         self.orders.insert(o.id.clone(), o);
     }
 
-    /// Loads an order by ID.
-    pub fn find(&self, id: &str) -> Option<&Order> {
+    fn find(&self, id: &str) -> Option<&Order> {
         self.orders.get(id)
     }
 }

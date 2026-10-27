@@ -27,9 +27,10 @@ radius.
   (braces, indentation or `end`), imports, and calls.
 - Calls are found as `name(` or `receiver.name(`. In TypeScript,
   JavaScript and Python, a call is first resolved through the calling
-  file's imports, then, for `receiver.name(`, through the receiver's
-  class where the code writes it down (see below). Otherwise, and in every
-  other language, it is matched **by name**.
+  file's imports. Then, in those and in Java, C# and Rust, `receiver.name(`
+  goes through the receiver's class where the code writes it down (see
+  below). Otherwise, and in every other language, it is matched **by
+  name**.
 - When several definitions share a name, CodeDiver prefers:
   1. a method of the same class, for `this.`/`self.` calls
   2. a definition in the same file
@@ -79,9 +80,9 @@ Check these against the code first.
 | **Go** | type-checked | type-checked, with interface dispatch | full graph | packages and external modules | `go test`, subtests, table cases | coverprofile; per-test runs |
 | **TypeScript, JavaScript** | lexical | through imports, else name match `~`; JSX renders count as calls | — | directories, from relative imports | Vitest, Jest, Mocha, Playwright, node:test | LCOV |
 | **Python** | lexical | through imports, else name match `~` | — | directories, from imports | pytest, unittest | LCOV, Cobertura; per-test runs (pytest) |
-| **Java, Kotlin, Scala** | lexical | name match `~` | — | directories, from imports | JUnit | JaCoCo, Cobertura |
-| **C#** | lexical | name match `~` | — | directories, from `using` | xUnit, NUnit, MSTest | Cobertura |
-| **Rust** | lexical | name match `~` | — | `mod` and `crate::` paths | `#[test]` | LCOV |
+| **Java, Kotlin, Scala** | lexical | name match `~`; Java and Kotlin interface dispatch | — | directories, from imports | JUnit | JaCoCo, Cobertura |
+| **C#** | lexical | name match `~`, interface dispatch | — | directories, from `using` | xUnit, NUnit, MSTest | Cobertura |
+| **Rust** | lexical | name match `~`, trait dispatch | — | `mod` and `crate::` paths | `#[test]` | LCOV |
 | **Ruby** | lexical | name match `~`, calls with parentheses only | — | `require_relative` | RSpec, minitest | LCOV, Cobertura |
 | **PHP** | lexical | name match `~` | — | `require`, `include` | PHPUnit | LCOV, Cobertura |
 | **C, C++** | lexical | name match `~` | — | quoted `#include` | GoogleTest | LCOV, Cobertura |
@@ -233,12 +234,33 @@ How calls resolve through imports:
 
 ### Java, Kotlin, C# and Rust
 
-- **Java and C#:** interface method declarations aren't symbols. A call
-  through an interface links by name to a class with that method. *[#76]*
+- **Interface dispatch (Java, C#, Kotlin, Rust):** interface method
+  declarations (`void save(Order o);`, Kotlin's `fun save(o: Order)`) and
+  trait methods without a body are abstract symbols. A class that lists an
+  interface (`class MemoryStore implements Store`, `class MemoryStore :
+  IStore`, `impl Store for MemoryStore`)
+  `implements` it, and each interface method has a `dispatch` edge to the
+  class's method of that name, inherited ones included. Interfaces and
+  traits are matched by name within the language, so an interface from a
+  dependency, or two with one name, link nothing.
+- **Receiver classes (Java, C#, Rust):** `store.save()` links to the
+  `save` of `store`'s type when it's written down: a typed field
+  (`private final Store store;`, `private readonly IStore _store;`), a
+  parameter, `Store s = …`, `var s = new MemoryStore()`, `let s =
+  MemoryStore::new()`, or a struct field (`store: Box<dyn Store>`; `&`,
+  `dyn`, `impl`, `Box`, `Rc` and `Arc` are seen through). A call through
+  an interface links to its declaration, which dispatches to the
+  implementations. Otherwise it's matched by name and may be marked
+  guessed.
+- **Extension functions (Kotlin, Scala):** `fun String.slug()`, Scala 3's
+  `extension (s: String)` blocks and `def (s: String).slug` are qualified
+  by the type they extend (`String.slug`), so they don't collide with
+  same-named methods. Calls to them are still matched by name.
 - **Java:** method references (`this::save`, `Orders::total`) are `ref`
   edges to that method of the class.
-- **Rust:** `impl Trait for Type` isn't linked to the trait. *[#76]*
-  Calls inside macros like `println!` are found. Functions in
+- **Scala:** trait implementations aren't linked yet, and Kotlin calls
+  aren't typed by their receiver.
+- **Rust:** Calls inside macros like `println!` are found. Functions in
   `#[cfg(test)]` modules are test code, not code under test.
 
 ### Ruby
@@ -283,4 +305,3 @@ How calls resolve through imports:
 [#72]: https://github.com/aitakemyjob/codediver/issues/72
 [#73]: https://github.com/aitakemyjob/codediver/issues/73
 [#75]: https://github.com/aitakemyjob/codediver/issues/75
-[#76]: https://github.com/aitakemyjob/codediver/issues/76

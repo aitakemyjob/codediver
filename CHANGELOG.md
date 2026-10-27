@@ -58,6 +58,15 @@ every merged pull request.
   instead of the first same-named method. Calls still matched by name
   among several definitions are marked *guessed*: a dotted *guess?* edge
   in the app, and *(guessed …)* with a note in agent tools.
+- **Interface dispatch for Java, C#, Kotlin and Rust** (#100): interface method
+  declarations and bodiless trait methods are abstract symbols, a class
+  listing an interface (`implements Store`, `: IStore`, `impl Store for
+  MemoryStore`) implements it, and each interface method dispatches to
+  the class's method. Calls on typed fields, parameters and locals
+  (`private final Store store;`, `store: Box<dyn Store>`) link to the
+  type's method, so Trace to `MemoryStore.save` goes through the
+  interface. Kotlin and Scala extension functions are qualified by the
+  type they extend (`String.slug`).
 - **Go control flow and generics** (#74): calls through generic interfaces
   (`Repo[int]`) dispatch to the types implementing that instantiation,
   generic ones included. In the Logic view, a block holding a closure

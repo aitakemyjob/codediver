@@ -1,8 +1,8 @@
 # dotnet-xunit
 
 A small orders service in C# with xUnit: `Orders` (validation and pricing),
-`MemoryStore`, `Notifier` (a webhook that's hard to test) and
-`OrderHandler` (request handling), in `src/Orders`, with tests in
+an `IStore` interface and the `MemoryStore` implementing it, `Notifier` (a webhook that's hard to test) and
+`OrderHandler` (request handling, through `IStore`), in `src/Orders`, with tests in
 `tests/Orders.Tests`. See [../README.md](../README.md) for what to try and
 what the gaps are.
 
