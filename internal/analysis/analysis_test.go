@@ -1498,3 +1498,147 @@ func TestC(t *testing.T) {
 		t.Errorf("deferred closure = %+v", lits[1].Nodes)
 	}
 }
+
+// A call on a receiver whose class is written down links to that class's
+// method, not the first same-named one; a call still matched by name among
+// several candidates is marked as guessed (#67).
+func TestGenericReceiverTypes(t *testing.T) {
+	root, files := writeTree(t, map[string]string{
+		"src/cache.ts": `export class Cache {
+  save(k: string) {}
+}
+`,
+		"src/sql.ts": `export class SqlStore {
+  save(k: string) {}
+}
+
+export class AuditedStore extends SqlStore {
+  audit() {}
+}
+`,
+		"src/use.ts": `import { SqlStore, AuditedStore } from './sql'
+import { Cache } from './cache'
+
+export class Service {
+  private cache: Cache
+  constructor(private store: SqlStore, audited: AuditedStore) {
+    this.cache = new Cache()
+    this.log = audited
+  }
+  log: AuditedStore
+
+  run(s: SqlStore) {
+    const c = new Cache()
+    s.save('a')
+    c.save('b')
+    this.store.save('c')
+    this.cache.save('d')
+    this.log.save('e')
+  }
+}
+
+export function guess(x: any) {
+  x.save('f')
+}
+
+export function maybe(s?: SqlStore) {
+  s?.save('g')
+}
+`,
+		"app/stores.py": `class Store:
+    def save(self, k):
+        pass
+
+
+class Cache:
+    def save(self, k):
+        pass
+`,
+		"app/use.py": `from .stores import Store, Cache
+
+
+class Service:
+    backup: Cache
+
+    def __init__(self, store: Store):
+        self.store = store
+        self.cache = Cache()
+
+    def run(self, s: Store):
+        c = Cache()
+        s.save("a")
+        c.save("b")
+        self.store.save("c")
+        self.cache.save("d")
+        self.backup.save("e")
+
+
+def guess(x):
+    x.save("f")
+`,
+	})
+	ix := Build(root, files, testLang)
+	edgeTo := func(from string, line int) (string, bool) {
+		for _, e := range ix.Callees(from) {
+			for _, l := range e.Lines {
+				if l == line {
+					return e.To, e.Guessed
+				}
+			}
+		}
+		return "", false
+	}
+	for _, c := range []struct {
+		from string
+		line int
+		to   string
+	}{
+		{"h:src/use.ts#Service.run", 14, "h:src/sql.ts#SqlStore.save"}, // (s: SqlStore)
+		{"h:src/use.ts#Service.run", 15, "h:src/cache.ts#Cache.save"},  // const c = new Cache()
+		{"h:src/use.ts#Service.run", 16, "h:src/sql.ts#SqlStore.save"}, // constructor(private store: SqlStore)
+		{"h:src/use.ts#Service.run", 17, "h:src/cache.ts#Cache.save"},  // this.cache = new Cache()
+		{"h:src/use.ts#Service.run", 18, "h:src/sql.ts#SqlStore.save"}, // log: AuditedStore, through extends
+		{"h:app/use.py#Service.run", 13, "h:app/stores.py#Store.save"}, // (s: Store)
+		{"h:app/use.py#Service.run", 14, "h:app/stores.py#Cache.save"}, // c = Cache()
+		{"h:app/use.py#Service.run", 15, "h:app/stores.py#Store.save"}, // self.store = store (store: Store)
+		{"h:app/use.py#Service.run", 16, "h:app/stores.py#Cache.save"}, // self.cache = Cache()
+		{"h:app/use.py#Service.run", 17, "h:app/stores.py#Cache.save"}, // backup: Cache
+	} {
+		to, guessed := edgeTo(c.from, c.line)
+		if to != c.to || guessed {
+			t.Errorf("%s line %d → %s (guessed %v), want %s", c.from, c.line, to, guessed, c.to)
+		}
+	}
+	if to, guessed := edgeTo("h:src/use.ts#maybe", 27); to != "h:src/sql.ts#SqlStore.save" || guessed {
+		t.Errorf("optional parameter (s?: SqlStore) → %s guessed=%v", to, guessed)
+	}
+	for _, from := range []string{"h:src/use.ts#guess", "h:app/use.py#guess"} {
+		if to, guessed := edgeTo(from, map[string]int{"h:src/use.ts#guess": 23, "h:app/use.py#guess": 21}[from]); to == "" || !guessed {
+			t.Errorf("%s: an untyped receiver's call should be a marked guess, got %q guessed=%v", from, to, guessed)
+		}
+	}
+}
+
+// Overloads of one method aren't a guess; same-named methods of different
+// classes are.
+func TestDistinctDefinitions(t *testing.T) {
+	a1 := &Symbol{File: "A.java", Qualified: "A.A"}
+	a2 := &Symbol{File: "A.java", Qualified: "A.A"}
+	b := &Symbol{File: "B.java", Qualified: "B.save"}
+	c := &Symbol{File: "C.java", Qualified: "C.save"}
+	if distinctDefinitions([]*Symbol{a1, a2}) || !distinctDefinitions([]*Symbol{b, c}) {
+		t.Error("overloads must not count as a guess; different classes must")
+	}
+}
+
+func TestCleanType(t *testing.T) {
+	for in, want := range map[string]string{
+		"Store": "Store", "Optional[Store]": "Store", "Store | None": "Store", "None | Store": "Store",
+		"SqlStore<T>": "SqlStore", "Store | null | undefined": "Store", "models.Store": "models.Store",
+		"list[Store]": "", "Store[]": "", "A | B": "", "": "",
+	} {
+		if got := cleanType(in); got != want {
+			t.Errorf("cleanType(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

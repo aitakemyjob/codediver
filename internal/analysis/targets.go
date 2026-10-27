@@ -12,29 +12,43 @@ type callSite struct {
 	name string
 }
 
+// match is a strategy's answer: the definition a call reaches (nil for no
+// edge) and whether it was a guess among several same-named candidates.
+type match struct {
+	target  *Symbol
+	guessed bool
+}
+
 // targetFinder is one strategy for resolving a call. handled reports that
-// it decided; target may then be nil, meaning no edge.
+// it decided; the match's target may then be nil, meaning no edge.
 type targetFinder interface {
-	find(c callSite) (target *Symbol, handled bool)
+	find(c callSite) (m match, handled bool)
 }
 
 // finderChain asks each finder in turn until one decides.
 type finderChain []targetFinder
 
-// find returns the first decision in the chain, or nil when none decides.
-func (fc finderChain) find(c callSite) *Symbol {
+// find returns the first decision in the chain, or no target when none
+// decides.
+func (fc finderChain) find(c callSite) match {
 	for _, f := range fc {
-		if t, ok := f.find(c); ok {
-			return t
+		if m, ok := f.find(c); ok {
+			return m
 		}
 	}
-	return nil
+	return match{}
 }
 
 // newFinderChain builds the strategies for the heuristic analyzer: super
-// calls, then calls through imports, then name matching.
-func newFinderChain(byName map[string][]*Symbol, modules *moduleGraph) finderChain {
-	return finderChain{superFinder{byName}, importFinder{modules}, nameFinder{byName}}
+// calls, calls through imports, calls on a receiver whose class is written
+// down, then name matching.
+func newFinderChain(byName map[string][]*Symbol, modules *moduleGraph, gfiles []*genericFile) finderChain {
+	return finderChain{
+		superFinder{byName},
+		importFinder{modules},
+		newReceiverFinder(byName, modules, gfiles),
+		nameFinder{byName},
+	}
 }
 
 // superFinder resolves `super.name()` to the parent class's method, when
@@ -42,11 +56,11 @@ func newFinderChain(byName map[string][]*Symbol, modules *moduleGraph) finderCha
 type superFinder struct{ byName map[string][]*Symbol }
 
 // find decides every super call.
-func (f superFinder) find(c callSite) (*Symbol, bool) {
+func (f superFinder) find(c callSite) (match, bool) {
 	if c.recv != "super" {
-		return nil, false
+		return match{}, false
 	}
-	return superTarget(c.file.extends[c.from.Parent], f.byName[c.name]), true
+	return match{target: superTarget(c.file.extends[c.from.Parent], f.byName[c.name])}, true
 }
 
 // importFinder resolves calls through the calling file's imports:
@@ -56,11 +70,12 @@ type importFinder struct{ modules *moduleGraph }
 
 // find decides calls whose name or receiver is bound by an import that
 // leads to a definition in the repository.
-func (f importFinder) find(c callSite) (*Symbol, bool) {
+func (f importFinder) find(c callSite) (match, bool) {
 	if c.recv == "this" || c.recv == "self" {
-		return nil, false
+		return match{}, false
 	}
-	return f.modules.target(c.file.path, c.recv, c.name)
+	t, ok := f.modules.target(c.file.path, c.recv, c.name)
+	return match{target: t}, ok
 }
 
 // nameFinder links a call to a same-named definition, preferring the
@@ -68,6 +83,7 @@ func (f importFinder) find(c callSite) (*Symbol, bool) {
 type nameFinder struct{ byName map[string][]*Symbol }
 
 // find decides every call it is asked about.
-func (f nameFinder) find(c callSite) (*Symbol, bool) {
-	return pickTarget(c.from, c.recv, f.byName[c.name], c.file.path), true
+func (f nameFinder) find(c callSite) (match, bool) {
+	t, guessed := pickTarget(c.from, c.recv, f.byName[c.name], c.file.path)
+	return match{target: t, guessed: guessed}, true
 }

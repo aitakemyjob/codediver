@@ -5,6 +5,12 @@ pricing), `store.py` (in-memory), `notify.py` (a webhook that's hard to
 test) and `api.py` (request handlers). See [../README.md](../README.md) for
 what to try and what the gaps are.
 
+`create_order` calls `store.save(o)` and `audit.save(o)`: `MemoryStore`
+and `orders/audit.py`'s `AuditLog` both define `save`, and each call
+reaches its own through the parameter's annotation. `maintenance.replay`
+calls `target.save(o)` on an unannotated `target`, so that edge is marked as
+a guess.
+
 `orders/receipt/` and `api.get_receipt` show calls that only resolve
 through imports: `orders/text.py` and `receipt/lines.py` both define
 `format`, and `receipt/heading.py` imports the one from `text.py` although

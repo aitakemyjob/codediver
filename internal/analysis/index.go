@@ -183,6 +183,8 @@ type GraphEdge struct {
 	Count     int    `json:"count,omitempty"`
 	Highlight bool   `json:"highlight,omitempty"`
 	Heuristic bool   `json:"heuristic,omitempty"`
+	// Guessed marks a call matched by name to one of several candidates.
+	Guessed bool `json:"guessed,omitempty"`
 }
 
 type Graph struct {
@@ -295,7 +297,7 @@ func (ix *Index) CallGraph(id string, o CallGraphOptions) *Graph {
 			return
 		}
 		edges[key] = true
-		g.Edges = append(g.Edges, GraphEdge{ID: key, From: e.From, To: e.To, Kind: string(e.Kind), Count: max(1, len(e.Lines)), Heuristic: e.Heuristic})
+		g.Edges = append(g.Edges, GraphEdge{ID: key, From: e.From, To: e.To, Kind: string(e.Kind), Count: max(1, len(e.Lines)), Heuristic: e.Heuristic, Guessed: e.Guessed})
 	}
 	for depth := 1; depth <= o.Depth && len(frontier) > 0; depth++ {
 		var next []string
@@ -415,7 +417,7 @@ func (ix *Index) TraceTo(id string, depth int, maxNodes int) *Graph {
 	}
 	for _, e := range edgeSet {
 		key := e.From + "→" + e.To + "|" + string(e.Kind)
-		g.Edges = append(g.Edges, GraphEdge{ID: key, From: e.From, To: e.To, Kind: string(e.Kind), Count: max(1, len(e.Lines)), Highlight: true, Heuristic: e.Heuristic})
+		g.Edges = append(g.Edges, GraphEdge{ID: key, From: e.From, To: e.To, Kind: string(e.Kind), Count: max(1, len(e.Lines)), Highlight: true, Heuristic: e.Heuristic, Guessed: e.Guessed})
 	}
 	sortNodes(g)
 	return g

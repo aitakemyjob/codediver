@@ -39,6 +39,14 @@ every merged pull request.
   report the coverage of the change.
 
 ### Changed
+- **Calls on typed receivers** (#67): in TypeScript, JavaScript and
+  Python, `s.save()` links to the `save` of `s`'s class where the code
+  writes it down (`new SqlStore()`, typed parameters and fields,
+  constructor parameter properties, `s = Store()`, annotated parameters
+  and attributes, `self.store = …` in `__init__`), following `extends`,
+  instead of the first same-named method. Calls still matched by name
+  among several definitions are marked *guessed*: a dotted *guess?* edge
+  in the app, and *(guessed …)* with a note in agent tools.
 - **Go control flow and generics** (#74): calls through generic interfaces
   (`Repo[int]`) dispatch to the types implementing that instantiation,
   generic ones included. In the Logic view, a block holding a closure

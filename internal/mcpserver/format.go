@@ -127,6 +127,9 @@ func renderGraph(g *analysis.Graph) string {
 		if e.Heuristic {
 			h = " ~"
 		}
+		if e.Guessed {
+			h += " (guessed: one of several same-named definitions)"
+		}
 		fmt.Fprintf(&sb, "  %s → %s (%s%s)%s\n", label[e.From], label[e.To], e.Kind, count, h)
 	}
 	if g.Note != "" {
@@ -149,6 +152,12 @@ func precisionNote(g *analysis.Graph) string {
 	note := "\nPrecision: ~ edges are lexical name matches, not type-checked: a same-named function may be the real target, and calls through values, aliases or framework wiring are missed, so callers may be incomplete."
 	if g.Kind == "deps" {
 		note = "\nPrecision: ~ edges come from import statements resolved to files in the repository; path aliases, workspace packages and dynamic imports aren't followed, so some dependencies may be missing."
+	}
+	for _, e := range g.Edges {
+		if e.Guessed {
+			note += " Edges marked guessed picked one of several same-named definitions with nothing to tell them apart; read the code before relying on them."
+			break
+		}
 	}
 	if g.Kind == "trace" {
 		note += " An {entry} badge means no caller was found, not necessarily a real entry point."

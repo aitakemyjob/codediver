@@ -7,7 +7,9 @@ JSX. `cart/cart.ts` holds a `Cart` class and a `GiftCart` subclass, written
 with the TypeScript shapes the analyzer has to handle: a one-line
 constructor and methods, a class field holding an arrow (`clear`),
 `super.subtotal()`, `cart?.subtotal()` and a multi-line import.
-`pages/CartPage.tsx` is an anonymous default export, and `api.ts` groups
+`giftSummary` and `cart/checkout.ts`'s `Checkout` call `subtotal()` on a
+receiver typed `GiftCart`, so they reach `GiftCart.subtotal` rather than
+`Cart`'s. `pages/CartPage.tsx` is an anonymous default export, and `api.ts` groups
 its endpoints in an object literal (`ordersApi`). `receipt/` and
 `pages/ReceiptPage.tsx` show calls that only resolve through imports:
 `cart/format.ts` and `receipt/format.ts` both export `format`, and

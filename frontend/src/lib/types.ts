@@ -196,6 +196,8 @@ export interface GraphEdge {
   count?: number;
   highlight?: boolean;
   heuristic?: boolean;
+  /** Matched by name to one of several same-named definitions. */
+  guessed?: boolean;
 }
 
 export interface Graph {

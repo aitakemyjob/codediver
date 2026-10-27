@@ -85,11 +85,11 @@ var examples = []exampleCase{
 		validate: "Validate", file: "order/order.go", edit: proposals.Edit{Old: "if o.Qty > 1000 {", New: "if o.Qty > 500 {"}, caller: "Handler.CreateOrder", callerStatus: StatusCaller,
 	},
 	{
-		name: "ts-react", framework: "vitest", tests: 5, covFiles: 15,
+		name: "ts-react", framework: "vitest", tests: 5, covFiles: 16,
 		funcs: map[string]fnExpect{
 			"validate":    {cover: "partial", tested: true, callers: 1}, // from OrderForm's submit
 			"total":       {cover: "full", tested: true, callers: 4},    // OrderSummary's JSX, Cart.subtotal, receipt's format, and grandTotal as orderTotal
-			"formatCents": {cover: "full", tested: true, callers: 5},    // OrderSummary, summarize, both formats and ReceiptPage
+			"formatCents": {cover: "full", tested: true, callers: 7},    // OrderSummary, summarize, giftSummary, Checkout.due, both formats and ReceiptPage
 			"unitPrice":   {cover: "full", tested: true, callers: 1},
 			"legacyTotal": {cover: "partial", callers: 0}, // the declaration line runs on import
 			// Components rendered only through JSX in App.
@@ -99,10 +99,12 @@ var examples = []exampleCase{
 			"App": {cover: "0", callers: 1},
 			// The cart: a constructor, one-line methods, a class field
 			// holding an arrow, super and ?. calls.
-			"Cart.constructor":  {cover: "full", tested: true, callers: 1}, // new Cart() in a test and in CartPage
-			"Cart.reset":        {cover: "full", tested: true, callers: 2}, // through the constructor
-			"Cart.clear":        {cover: "partial", callers: 0},            // only passed to onClick
-			"GiftCart.subtotal": {cover: "full", tested: true, callers: 0},
+			"Cart.constructor": {cover: "full", tested: true, callers: 1}, // new Cart() in a test and in CartPage
+			"Cart.reset":       {cover: "full", tested: true, callers: 2}, // through the constructor
+			"Cart.clear":       {cover: "partial", callers: 0},            // only passed to onClick
+			// giftSummary (cart: GiftCart) and Checkout.due (this.cart: GiftCart);
+			// name matching alone would send both to Cart.subtotal (#67).
+			"GiftCart.subtotal": {cover: "full", tested: true, callers: 2},
 			"Cart.subtotal":     {cover: "full", tested: true, callers: 3}, // super.subtotal(), cart?.subtotal() and cart/format.ts
 			// An object literal's methods and an anonymous default export.
 			"ordersApi.create": {cover: "0", callers: 0},
@@ -112,7 +114,7 @@ var examples = []exampleCase{
 		validate: "validate", file: "src/order.ts", edit: proposals.Edit{Old: "if (o.qty > 1000)", New: "if (o.qty > 500)"}, caller: "submit", callerStatus: StatusNotRun,
 	},
 	{
-		name: "python-api", framework: "pytest", tests: 4, covFiles: 10,
+		name: "python-api", framework: "pytest", tests: 4, covFiles: 12,
 		funcs: map[string]fnExpect{
 			"validate":     {cover: "partial", tested: true, callers: 2},
 			"total":        {cover: "full", tested: true, callers: 4}, // create_order, a test, receipt's format and grand_total as pricing.total
@@ -547,6 +549,53 @@ func TestExampleGoFlow(t *testing.T) {
 	}
 	if !back {
 		t.Errorf("goto retry should jump back to its label: %+v", fl.Edges)
+	}
+}
+
+// TestExampleReceiverTypes pins calls the examples make on receivers whose
+// class is written down (#67): each reaches that class's method although
+// another class's same-named method is closer by name, and none of them
+// is a guess.
+func TestExampleReceiverTypes(t *testing.T) {
+	ctx := context.Background()
+	for _, c := range []struct{ example, from, to, other, how string }{
+		{"ts-react", "h:src/cart/cart.ts#giftSummary", "h:src/cart/cart.ts#GiftCart.subtotal", "h:src/cart/cart.ts#Cart.subtotal", "parameter (cart: GiftCart)"},
+		{"ts-react", "h:src/cart/checkout.ts#Checkout.due", "h:src/cart/cart.ts#GiftCart.subtotal", "h:src/cart/cart.ts#Cart.subtotal", "constructor(private cart: GiftCart), this.cart.subtotal()"},
+		{"ts-react", "h:src/cart/cart.ts#summarize", "h:src/cart/cart.ts#Cart.subtotal", "h:src/cart/cart.ts#GiftCart.subtotal", "optional parameter (cart?: Cart)"},
+		{"python-api", "h:orders/api.py#create_order", "h:orders/store.py#MemoryStore.save", "", "store: MemoryStore"},
+		{"python-api", "h:orders/api.py#create_order", "h:orders/audit.py#AuditLog.save", "", "audit: AuditLog | None"},
+	} {
+		s, rt := openExample(t, c.example)
+		ix, err := s.Index(ctx, rt)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var found *analysis.Edge
+		for _, e := range ix.Callees(c.from) {
+			if e.To == c.to {
+				found = &e
+			}
+			if c.other != "" && e.To == c.other {
+				t.Errorf("%s: %s also links to %s", c.how, c.from, c.other)
+			}
+		}
+		if found == nil || found.Guessed {
+			t.Errorf("%s: %s should call %s without a guess: %+v", c.how, c.from, c.to, ix.Callees(c.from))
+		}
+	}
+	// replay's target has no annotation: its save is matched by name among
+	// MemoryStore.save and AuditLog.save, and marked as a guess.
+	s, rt := openExample(t, "python-api")
+	ix, err := s.Index(ctx, rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	guessed := false
+	for _, e := range ix.Callees("h:orders/maintenance.py#replay") {
+		guessed = guessed || strings.HasSuffix(e.To, ".save") && e.Guessed
+	}
+	if !guessed {
+		t.Errorf("replay's untyped target.save() should be a marked guess: %+v", ix.Callees("h:orders/maintenance.py#replay"))
 	}
 }
 

@@ -2,12 +2,13 @@
 import json
 
 from . import notify, receipt
+from .audit import AuditLog
 from .order import InvalidOrder, Order, total, validate
 from .store import MemoryStore, NotFound
 
 
-def create_order(store: MemoryStore, body: str) -> tuple[int, dict]:
-    """Validate, price, store and announce an order. Returns (status, response)."""
+def create_order(store: MemoryStore, body: str, audit: AuditLog | None = None) -> tuple[int, dict]:
+    """Validate, price, store, record and announce an order. Returns (status, response)."""
     try:
         data = json.loads(body)
     except json.JSONDecodeError as e:
@@ -18,6 +19,8 @@ def create_order(store: MemoryStore, body: str) -> tuple[int, dict]:
     except InvalidOrder as e:
         return 422, {"error": str(e)}
     store.save(o)
+    if audit:
+        audit.save(o)
     notify.send(o)
     return 201, {"id": o.id, "total": total(o)}
 
