@@ -8,6 +8,8 @@ every merged pull request.
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-10-27
+
 ### Changed
 
 - **Callbacks are references** (#68): a function passed as a value
@@ -38,6 +40,13 @@ every merged pull request.
   type's method, so Trace to `MemoryStore.save` goes through the
   interface. Kotlin and Scala extension functions are qualified by the
   type they extend (`String.slug`).
+
+### Fixed
+
+- **Imports through barrels that re-export each other** (#106): with
+  `export *` cycles between barrels, an `import { x }` from one of them
+  could link to another file's `x` by name matching, depending on which
+  barrel was looked up first. It now always reaches the real definition.
 
 ## [0.2.1] — 2026-10-24
 
@@ -272,7 +281,8 @@ walkthroughs, function logic, trace-to-here, call and dependency graphs,
 heatmaps, visual review of agent proposals, ten themes, and installers for
 macOS, Windows and Linux plus a headless server.
 
-[Unreleased]: https://github.com/aitakemyjob/codediver/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/aitakemyjob/codediver/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/aitakemyjob/codediver/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/aitakemyjob/codediver/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/aitakemyjob/codediver/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/aitakemyjob/codediver/compare/v0.1.0...v0.1.1
