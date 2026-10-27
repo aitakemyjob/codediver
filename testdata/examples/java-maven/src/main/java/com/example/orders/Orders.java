@@ -41,4 +41,13 @@ public final class Orders {
         }
         return sum;
     }
+
+    /**
+     * What several orders cost together. total is passed as a method
+     * reference (Orders::total), never called here: CodeDiver records a
+     * ref edge from grandTotal to it.
+     */
+    public static int grandTotal(java.util.List<Order> orders) {
+        return orders.stream().mapToInt(Orders::total).sum();
+    }
 }

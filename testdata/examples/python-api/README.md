@@ -9,7 +9,9 @@ what to try and what the gaps are.
 and `orders/audit.py`'s `AuditLog` both define `save`, and each call
 reaches its own through the parameter's annotation. `maintenance.replay`
 calls `target.save(o)` on an unannotated `target`, so that edge is marked as
-a guess.
+a guess. It sorts with `key=_by_id`, and `replay_in_background` passes
+`replay` as a thread's `target=`: both are `ref` edges, so neither function
+looks uncalled.
 
 `orders/receipt/` and `api.get_receipt` show calls that only resolve
 through imports: `orders/text.py` and `receipt/lines.py` both define

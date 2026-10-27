@@ -39,6 +39,12 @@ every merged pull request.
   report the coverage of the change.
 
 ### Changed
+- **Callbacks are references** (#68): a function passed as a value
+  (`items.map(format)`, `promise.then(render)`, `{ handler: create }`,
+  `sorted(xs, key=keyfn)`, `Thread(target=run)`, Java's `this::save` and
+  `Orders::total`) gets a `ref` edge from the function passing it, when the
+  name resolves to a function, so callbacks no longer look uncalled and
+  Trace to here reaches through them.
 - **Calls on typed receivers** (#67): in TypeScript, JavaScript and
   Python, `s.save()` links to the `save` of `s`'s class where the code
   writes it down (`new SqlStore()`, typed parameters and fields,

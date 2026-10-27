@@ -62,7 +62,7 @@ It **does not** guarantee that:
 - **The target is right.** The edge points at the definition that was
   picked, which may be a same-named function elsewhere.
 - **The callers are complete.** Calls through variables, aliases,
-  callbacks and framework wiring are missed.
+  callbacks the analyzer can't resolve and framework wiring are missed.
 - **The edge is real.** Decorators and some call shapes match by accident
   (see the known limitations below).
 
@@ -177,9 +177,13 @@ Edges that are wrong or missing:
   and may be marked guessed.
 - `super.handle()` links to `handle` on the class named by `extends`.
   When that class isn't in the repository, no edge is drawn.
-- Functions passed as values get no edge: `items.map(format)`,
-  `promise.then(render)`, `emitter.on('done', notify)`. React components
-  passed as props are an exception. *[#68]*
+- **Functions passed as values** are `ref` edges from the function passing
+  them: a whole argument (`items.map(format)`, `promise.then(render)`,
+  `emitter.on('done', notify)`, `setTimeout(tick)`, `this.done`) or an
+  object value (`{ handler: create }`). The name has to resolve: imported,
+  defined at the top of the same file, or a method of the same class through
+  `this.`. A parameter of the same name, and import lists, don't count.
+  React components passed as props were already references.
 - **Module-level code:** calls outside any function and class, like
   `render(<App />)` in `main.tsx`, are made by the file's `<module>`. Test
   files are left out: their top level is `describe`/`it` blocks.
@@ -215,8 +219,11 @@ How calls resolve through imports:
   `self.store = store` from an annotated parameter, `self.store: Store`, or
   a class-level annotation (`store: Store`, as in dataclasses). Otherwise it's
   matched by name and may be marked guessed.
-- **Functions passed as values** get no edge: `sorted(xs, key=keyfn)`,
-  `map(fn, xs)`, callbacks. *[#68]*
+- **Functions passed as values** are `ref` edges: whole arguments
+  (`map(fn, xs)`), keyword arguments (`sorted(xs, key=keyfn)`,
+  `Thread(target=run)`, `view_func=create`), dict values and `self.method`,
+  when the name is imported, defined at the top of the same file, or a method
+  of the same class.
 - **Implicit calls:** `@property` reads and dunder methods (`__enter__`,
   operators) aren't calls. *inherent*
 - **Decorated entry points:** `@app.route`, fixtures and task decorators
@@ -228,7 +235,8 @@ How calls resolve through imports:
 
 - **Java and C#:** interface method declarations aren't symbols. A call
   through an interface links by name to a class with that method. *[#76]*
-- **Java:** method references (`this::save`) get no edge. *[#68]*
+- **Java:** method references (`this::save`, `Orders::total`) are `ref`
+  edges to that method of the class.
 - **Rust:** `impl Trait for Type` isn't linked to the trait. *[#76]*
   Calls inside macros like `println!` are found. Functions in
   `#[cfg(test)]` modules are test code, not code under test.
@@ -262,7 +270,6 @@ How calls resolve through imports:
   on a path.
 
 [#18]: https://github.com/aitakemyjob/codediver/issues/18
-[#68]: https://github.com/aitakemyjob/codediver/issues/68
 [#70]: https://github.com/aitakemyjob/codediver/issues/70
 [#94]: https://github.com/aitakemyjob/codediver/issues/94
 [#72]: https://github.com/aitakemyjob/codediver/issues/72
