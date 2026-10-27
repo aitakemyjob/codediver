@@ -1117,6 +1117,33 @@ export function run() { go() }
 	}
 }
 
+// A barrel reached inside a cycle doesn't memoize a miss while the lookup
+// that started the cycle is still in progress: b re-exports a, which
+// re-exports c, so b exports x whichever barrel is looked up first.
+func TestGenericTypeScriptBarrelCycleMemo(t *testing.T) {
+	for _, order := range [][2]string{{"a", "b"}, {"b", "a"}} {
+		root, files := writeTree(t, map[string]string{
+			"src/a.ts": `export * from './b'
+export * from './c'
+`,
+			"src/b.ts": `export * from './a'
+`,
+			"src/c.ts": `export function x() {}
+`,
+			"src/other.ts": `export function x() {}
+`,
+			"src/m1.ts": "import { x } from './" + order[0] + "'\n\nexport function one() { x() }\n",
+			"src/m2.ts": "import { x } from './" + order[1] + "'\n\nexport function two() { x() }\n",
+		})
+		ix := Build(root, files, testLang)
+		for _, caller := range []string{"h:src/m1.ts#one", "h:src/m2.ts#two"} {
+			if !hasEdge(ix, caller, "h:src/c.ts#x", EdgeCall) || hasEdge(ix, caller, "h:src/other.ts#x", EdgeCall) {
+				t.Errorf("order %v: %s's callees = %+v", order, caller, ix.Callees(caller))
+			}
+		}
+	}
+}
+
 // Wide trees of barrels resolve, and are walked once per name rather than
 // once per path, which for a name none of them exports would be
 // width^depth lookups (#65).

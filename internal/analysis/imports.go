@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"math"
 	"regexp"
 	"strings"
 )
@@ -83,17 +84,24 @@ type moduleGraph struct {
 	// limitHits counts lookups cut off by maxExportHops; a miss that
 	// depended on one isn't memoized, since a shorter path may succeed.
 	limitHits int
+	// cycleHops is the smallest hops of an in-progress lookup that a cycle
+	// ran back into. A miss that depended on a lookup still in progress
+	// above it isn't memoized: that lookup may yet find the name.
+	cycleHops int
 }
 
-// exportResult is a memoized exportTarget answer.
+// exportResult is a memoized exportTarget answer, or a placeholder for a
+// lookup still in progress at hops.
 type exportResult struct {
 	target, local string
 	ok            bool
+	pending       bool
+	hops          int
 }
 
 // newModuleGraph binds every file whose language has a binder.
 func newModuleGraph(gfiles []*genericFile, fileSet map[string]bool) *moduleGraph {
-	g := &moduleGraph{scopes: map[string]*moduleScope{}, defs: map[string]map[string]*Symbol{}, members: map[string]map[string]*Symbol{}, resolved: map[[2]string]exportResult{}}
+	g := &moduleGraph{scopes: map[string]*moduleScope{}, defs: map[string]map[string]*Symbol{}, members: map[string]map[string]*Symbol{}, resolved: map[[2]string]exportResult{}, cycleHops: math.MaxInt}
 	for _, gf := range gfiles {
 		b := binders[gf.lang]
 		if b == nil {
@@ -142,6 +150,9 @@ func (g *moduleGraph) definesLocal(file, name string) bool {
 func (g *moduleGraph) exportTarget(file, name string, hops int) (target, local string, ok bool) {
 	key := [2]string{file, name}
 	if r, done := g.resolved[key]; done {
+		if r.pending {
+			g.cycleHops = min(g.cycleHops, r.hops)
+		}
 		return r.target, r.local, r.ok
 	}
 	if g.scopes[file] == nil {
@@ -151,14 +162,19 @@ func (g *moduleGraph) exportTarget(file, name string, hops int) (target, local s
 		g.limitHits++
 		return "", "", false
 	}
-	hits := g.limitHits
-	g.resolved[key] = exportResult{} // a cycle back here finds nothing
+	hits, outerCycle := g.limitHits, g.cycleHops
+	g.cycleHops = math.MaxInt
+	g.resolved[key] = exportResult{pending: true, hops: hops} // a cycle back here finds nothing
 	target, local, ok = g.findExport(file, name, hops)
-	if !ok && g.limitHits != hits {
+	if !ok && (g.limitHits != hits || g.cycleHops < hops) {
 		delete(g.resolved, key)
 	} else {
-		g.resolved[key] = exportResult{target, local, ok}
+		g.resolved[key] = exportResult{target: target, local: local, ok: ok}
 	}
+	if g.cycleHops >= hops {
+		g.cycleHops = math.MaxInt // cycles back here are closed
+	}
+	g.cycleHops = min(g.cycleHops, outerCycle)
 	return target, local, ok
 }
 
