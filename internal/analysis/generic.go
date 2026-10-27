@@ -688,10 +688,19 @@ func analyzeGeneric(root string, files []string, langOf func(string) string, ix 
 			}
 			ix.addEdge(Edge{From: from.ID, To: to, Kind: EdgeCall, Lines: []int{ln}, Heuristic: true, Guessed: m.guessed}, merge)
 		}
-		if re := bareInterpCalls[gf.lang]; re != nil {
-			for _, m := range re.FindAllStringSubmatch(text, -1) {
-				if t := sameClassMethod(from, byName[m[1]]); t != nil {
-					ix.addEdge(Edge{From: from.ID, To: t.ID, Kind: EdgeCall, Lines: []int{ln}, Heuristic: true}, merge)
+		// Calls written without parentheses (Ruby).
+		if h := parenlessCallHints[gf.lang]; h != nil {
+			for _, c := range parenlessCalls(h, from, gf, text) {
+				var t *Symbol
+				guessed := false
+				if c.recv != "" {
+					m := finder.find(callSite{from: from, file: gf, recv: c.recv, name: c.name})
+					t, guessed = m.target, m.guessed
+				} else {
+					t = sameClassMethod(from, byName[c.name])
+				}
+				if t != nil && t.ID != from.ID {
+					ix.addEdge(Edge{From: from.ID, To: t.ID, Kind: EdgeCall, Lines: []int{ln}, Heuristic: true, Guessed: guessed}, merge)
 				}
 			}
 		}
@@ -1079,7 +1088,7 @@ func init() {
 }
 
 // builtinMethods are method names common on built-in dicts, lists, maps,
-// sets, strings and promises in Python and JavaScript.
+// sets, strings and promises in Python, JavaScript and Ruby.
 var builtinMethods = map[string]bool{}
 
 // init fills builtinMethods.
@@ -1087,7 +1096,8 @@ func init() {
 	for _, m := range strings.Fields(`get set has add delete clear pop push shift unshift append extend insert remove
 		update keys values items entries copy sort reverse index count find filter map reduce forEach some every
 		includes join split strip replace startswith endswith lower upper format then catch finally slice splice
-		concat setdefault discard toString trim`) {
+		concat setdefault discard toString trim
+		empty? size length count first last include? key? any? none? zero? nil? each select reject to_s to_i to_h to_a`) {
 		builtinMethods[m] = true
 	}
 }

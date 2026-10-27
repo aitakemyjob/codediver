@@ -243,11 +243,19 @@ How calls resolve through imports:
 
 ### Ruby
 
-- Calls without parentheses (`write o`, `save!`) aren't found, and that's
-  how most Ruby is written. Expect sparse call graphs. *[#76]*
-- A bare name in interpolation (`"sent at #{timestamp}"`) is a call when
-  the caller's own class has a method of that name; otherwise it's taken
-  to be a local variable.
+- **Calls without parentheses** are found:
+  - `recv.name` is always a call (`@store.save order`, `@store.empty?`), and
+    resolves like `recv.name(`: through the receiver's class when it's
+    written down (`@store = MemoryStore.new`, `store = MemoryStore.new`),
+    else by name.
+  - A bare name (`validate order`, `save!`, `count.zero?`,
+    `"sent at #{timestamp}"`) is a call when the caller's own class has a
+    method of that name and the name isn't a parameter, block parameter or
+    assigned local.
+  - Not calls: `x.name = v` (an attribute write), `name:` hash keys, and a
+    method called on another call's result (`order.sku.to_s.empty?`), whose
+    class can't be known. Common built-in names (`empty?`, `size`, `count`,
+    `first`…) only link when the receiver looks like the class.
 - `Foo.new` reaches `Foo#initialize` in the test-to-code mapping, but not
   yet in the call graph.
 

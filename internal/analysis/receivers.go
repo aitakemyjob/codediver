@@ -43,6 +43,16 @@ var receiverHints = map[string]*typeHints{
 	"typescript": tsHints,
 	"javascript": tsHints,
 	"python":     pyHints,
+	"ruby":       rbHints,
+}
+
+var rbHints = &typeHints{
+	locals: []typePattern{
+		{rx(`^\s*([a-z_]\w*)\s*=\s*([A-Z][\w:]*)\.new\b`), 1, 2},
+	},
+	members: []typePattern{
+		{rx(`@([a-z_]\w*)\s*=\s*([A-Z][\w:]*)\.new\b`), 1, 2},
+	},
 }
 
 var tsHints = &typeHints{
@@ -233,7 +243,7 @@ func (f *receiverFinder) symbol(id string) *Symbol {
 // arguments are stripped; anything else (arrays, other unions) is not a
 // single class.
 func (f *receiverFinder) classNamed(gf *genericFile, typ string) *Symbol {
-	qual, name := splitType(cleanType(typ))
+	qual, name := splitType(cleanType(strings.ReplaceAll(typ, "::", ".")))
 	if name == "" {
 		return nil
 	}
@@ -241,10 +251,9 @@ func (f *receiverFinder) classNamed(gf *genericFile, typ string) *Symbol {
 	if t, ok := f.modules.target(gf.path, qual, name); ok && isClass(t) {
 		return t
 	}
-	if qual != "" {
-		return nil
-	}
-	if s := f.classes[gf.path][name]; s != nil {
+	// A qualifier that isn't an import (Ruby's Orders::MemoryStore) still
+	// names the class: fall back to the only class of that name.
+	if s := f.classes[gf.path][name]; s != nil && qual == "" {
 		return s
 	}
 	var only *Symbol

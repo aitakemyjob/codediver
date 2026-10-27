@@ -186,6 +186,12 @@ var examples = []exampleCase{
 			// Orders::MemoryStore.new runs initialize.
 			"MemoryStore.initialize": {cover: "full", tested: true, callers: 0},
 			"MemoryStore.find":       {cover: "full", tested: true, callers: 1},
+			// Called without parentheses (#99): `@store.save order` in
+			// create_order, `count.zero?` in empty?, and `@store.empty?` /
+			// `#{@store.count}` in summary.
+			"MemoryStore.save":   {cover: "full", tested: true, callers: 1},
+			"MemoryStore.count":  {cover: "partial", callers: 2},
+			"MemoryStore.empty?": {cover: "partial", callers: 1},
 			// Called only as "#{timestamp}" in Notifier.deliver, so the tests
 			// of deliver reach it (#79).
 			"Notifier.timestamp": {cover: "partial", tested: true, callers: 1},
@@ -632,6 +638,31 @@ func TestExampleCallbacks(t *testing.T) {
 	}
 }
 
+// TestExampleRubyParenless pins Ruby calls written without parentheses
+// in ruby-rspec (#99).
+func TestExampleRubyParenless(t *testing.T) {
+	s, rt := openExample(t, "ruby-rspec")
+	ix, err := s.Index(context.Background(), rt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store, handler := "h:lib/orders/memory_store.rb#MemoryStore.", "h:lib/orders/order_handler.rb#OrderHandler."
+	for _, e := range []struct{ from, to, how string }{
+		{handler + "create_order", store + "save", "@store.save order"},
+		{store + "empty?", store + "count", "count.zero?"},
+		{handler + "summary", store + "empty?", "@store.empty?"},
+		{handler + "summary", store + "count", `"#{@store.count} orders"`},
+	} {
+		found := false
+		for _, c := range ix.Callees(e.from) {
+			found = found || c.To == e.to
+		}
+		if !found {
+			t.Errorf("%s: %s should call %s: %+v", e.how, e.from, e.to, ix.Callees(e.from))
+		}
+	}
+}
+
 // TestExampleRubyHelpers pins that a helper defined inside a describe
 // block (order_spec.rb's order) belongs to that block: each test maps only
 // to what it calls.
@@ -648,24 +679,6 @@ func TestExampleRubyHelpers(t *testing.T) {
 	for _, tc := range a.tests {
 		if w, ok := want[tc.Name]; ok && strings.Join(tc.Targets, ",") != w {
 			t.Errorf("%q targets = %v, want %s", tc.Name, tc.Targets, w)
-		}
-	}
-}
-
-// TestExampleKnownGaps pins analysis gaps the examples expose, so the
-// README's support matrix stays honest. When one of these fails because
-// analysis got better, update the matrix and move the check above.
-func TestExampleKnownGaps(t *testing.T) {
-	// Ruby: a call without parentheses (`@store.save order`) isn't found
-	// (#76).
-	s, rt := openExample(t, "ruby-rspec")
-	a, err := s.qaAnalyze(context.Background(), rt)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, f := range a.funcs {
-		if f.Name == "MemoryStore.save" && f.Callers != 0 {
-			t.Errorf("%s callers = %d: the gap is fixed; update the support matrix and the README", f.Name, f.Callers)
 		}
 	}
 }
