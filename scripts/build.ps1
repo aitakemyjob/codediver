@@ -18,7 +18,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..')
-$WailsVersion = 'v2.16.0'
+$WailsVersion = 'v2.17.0'
 $App = 'CodeDiver'
 $Bin = 'codediver'
 
