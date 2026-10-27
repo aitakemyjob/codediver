@@ -47,6 +47,10 @@ every merged pull request.
   `export *` cycles between barrels, an `import { x }` from one of them
   could link to another file's `x` by name matching, depending on which
   barrel was looked up first. It now always reaches the real definition.
+- **Security** (#110): builds now require Go 1.26.10, which fixes
+  crypto/x509 trusting compromised intermediate certificates
+  (GO-2026-6809). The echo library, used only by the Wails dev server
+  and not included in releases, is updated to 4.16.1 for four advisories.
 
 ## [0.2.1] — 2026-10-24
 
